@@ -1,4 +1,5 @@
-//! The user's settings, in `%APPDATA%\Remapr\config.toml`.
+//! The user's settings, in `%APPDATA%\Remapr\config.toml` on Windows; other systems use their own
+//! settings folder (`remapr_platform::config_dir`).
 
 use std::io;
 use std::path::PathBuf;
@@ -84,10 +85,10 @@ pub enum Theme {
 }
 
 fn path() -> PathBuf {
-    let appdata = std::env::var_os("APPDATA").map_or_else(std::env::temp_dir, PathBuf::from);
+    let base = remapr_platform::config_dir().unwrap_or_else(std::env::temp_dir);
     // Debug builds keep their own settings, so trying things never touches the installed copy's.
     let folder = if cfg!(debug_assertions) { "Remapr-dev" } else { "Remapr" };
-    appdata.join(folder).join("config.toml")
+    base.join(folder).join("config.toml")
 }
 
 impl Config {

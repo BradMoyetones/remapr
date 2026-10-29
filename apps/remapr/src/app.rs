@@ -91,6 +91,10 @@ impl App {
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
             Ok(engine) => (Some(engine), None),
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => (
+                None,
+                Some(tr!("Remapr can't remap keys on this system yet: for now it only works on Windows.").into()),
+            ),
             Err(e) => (None, Some(tr!("Couldn't start the keyboard engine: {error}", error = e))),
         };
 
@@ -421,7 +425,8 @@ impl App {
             let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
             ui.painter().circle_filled(dot.center(), 4.0, color);
             ui.label(RichText::new(status).small().color(p.muted));
-            if !self.elevated {
+            // Administrator rights only matter to the Windows hook.
+            if cfg!(windows) && !self.elevated {
                 ui.label(icon_text(icon::WARNING, 13.0).color(p.muted)).on_hover_text(
                     tr!("Remapr runs without administrator rights: it doesn't remap keys inside windows that have them (Task Manager, installers). Installed, it starts with them."),
                 );

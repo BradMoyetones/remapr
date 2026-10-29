@@ -6,13 +6,15 @@
 //! unexpected response can't point the updater anywhere else.
 //!
 //! The network goes through curl.exe, which ships with Windows 10 and later (as schtasks.exe and
-//! msiexec.exe do), so Remapr carries no TLS stack of its own.
+//! msiexec.exe do), so Remapr carries no TLS stack of its own. macOS and most Linux systems ship
+//! curl too; installing is Windows-only until Phases 10 and 11.
 //! shortcut: curl.exe ignores the system proxy settings (it honours `HTTPS_PROXY`); move to WinHTTP if
 //! users behind a proxy report failed checks.
 //!
 //! Errors are an [`Error`]; the app puts them into words, in the user's language.
 
 use std::io::Read;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -22,6 +24,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 pub const REPO: &str = "BradMoyetones/remapr";
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// What went wrong, for the app to put into words.
@@ -74,7 +77,9 @@ impl Source {
     /// A folder laid out like GitHub's: `latest.json` (the API's answer) and `v<version>/` with the
     /// files. For tests, and for trying an update in a debug build before publishing anything.
     pub fn local(dir: &Path) -> Self {
-        let url = format!("file:///{}", dir.display().to_string().replace('\\', "/").replace(' ', "%20"));
+        let path = dir.display().to_string().replace('\\', "/").replace(' ', "%20");
+        // `C:/…` on Windows, `/…` elsewhere: either way one slash after the empty host.
+        let url = format!("file:///{}", path.trim_start_matches('/'));
         Self { latest: format!("{url}/latest.json"), downloads: url }
     }
 
@@ -207,9 +212,14 @@ fn curl(args: &[&str]) -> Result<Vec<u8>, Error> {
 }
 
 fn command(args: &[&str]) -> Command {
+    #[cfg(windows)]
     let mut command = Command::new(system32("curl.exe"));
+    // The one on the PATH: unlike Windows, Unix never looks in the working folder first.
+    #[cfg(not(windows))]
+    let mut command = Command::new("curl");
     // The header goes first: callers append options whose values follow them (`-o <file>`).
     command.arg("-H").arg(concat!("User-Agent: Remapr/", env!("CARGO_PKG_VERSION"))).args(args);
+    #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
     command
 }

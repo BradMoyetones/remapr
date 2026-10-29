@@ -1,30 +1,38 @@
 //! The notification-area icon: shows whether Remapr is active and keeps it reachable while the
-//! window is hidden.
+//! window is hidden. Windows-only for now: elsewhere there is no tray, and closing the window quits.
 
 use std::sync::mpsc::Sender;
 
 use eframe::egui;
+#[cfg(windows)]
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+#[cfg(windows)]
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
+#[cfg(windows)]
 use crate::i18n::tr;
 
 /// Icon resources embedded by build.rs.
 pub const ICON_ACTIVE: u16 = 1;
+#[cfg(windows)]
 const ICON_PAUSED: u16 = 2;
 
 /// What the tray, or a second launch of Remapr, asks the app to do.
+// Only the tray pauses or quits, and it is Windows-only for now.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub enum Command {
     Show,
     TogglePause,
     Quit,
 }
 
+#[cfg(windows)]
 pub struct Tray {
     icon: TrayIcon,
     pause: CheckMenuItem,
 }
 
+#[cfg(windows)]
 impl Tray {
     /// Must run on the UI thread: Windows delivers tray clicks through its message loop.
     pub fn new(enabled: bool, commands: Sender<Command>, ctx: egui::Context) -> Result<Self, String> {
@@ -73,10 +81,26 @@ impl Tray {
     }
 }
 
+#[cfg(windows)]
 fn look(enabled: bool) -> (Icon, &'static str) {
     let (id, tooltip) = if enabled { (ICON_ACTIVE, tr!("Remapr: on")) } else { (ICON_PAUSED, tr!("Remapr: paused")) };
     // Load the exact small size so Windows doesn't shrink the 32 px one.
     let size = remapr_platform::small_icon_size();
     let icon = Icon::from_resource(id, Some((size, size))).expect("build.rs embeds both tray icons");
     (icon, tooltip)
+}
+
+/// No tray on this system yet: `new` always fails, so no `Tray` value exists.
+#[cfg(not(windows))]
+pub enum Tray {}
+
+#[cfg(not(windows))]
+impl Tray {
+    pub fn new(_enabled: bool, _commands: Sender<Command>, _ctx: egui::Context) -> Result<Self, String> {
+        Err("no tray icon on this system yet".into())
+    }
+
+    pub fn sync(&self, _enabled: bool) {
+        match *self {}
+    }
 }
