@@ -47,17 +47,31 @@ pub fn kbd(ui: &mut Ui, label: &str, state: KeyState) -> Response {
 
 /// A square, frameless button showing one [`icon`]. `label` is its tooltip and accessible name.
 pub fn icon_button(ui: &mut Ui, glyph: char, label: &str) -> Response {
+    icon_button_toned(ui, glyph, label, false)
+}
+
+/// An [`icon_button`] for an action that deletes something: red, and redder on hover.
+pub fn danger_icon_button(ui: &mut Ui, glyph: char, label: &str) -> Response {
+    icon_button_toned(ui, glyph, label, true)
+}
+
+fn icon_button_toned(ui: &mut Ui, glyph: char, label: &str, danger: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(32.0), Sense::click());
     let p = Palette::of(ui);
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered() || response.has_focus();
+        let (hover_fill, ring, idle, active) = if danger {
+            (p.danger_soft, p.danger, p.danger.gamma_multiply(0.7), p.danger)
+        } else {
+            (p.surface_hover, p.accent, p.muted, p.text)
+        };
         if hovered {
-            ui.painter().rect_filled(rect, CornerRadius::same(8), p.surface_hover);
+            ui.painter().rect_filled(rect, CornerRadius::same(8), hover_fill);
         }
         if response.has_focus() {
-            ui.painter().rect_stroke(rect, CornerRadius::same(8), Stroke::new(1.5, p.accent), StrokeKind::Inside);
+            ui.painter().rect_stroke(rect, CornerRadius::same(8), Stroke::new(1.5, ring), StrokeKind::Inside);
         }
-        let color = if hovered { p.text } else { p.muted };
+        let color = if hovered { active } else { idle };
         ui.painter().text(rect.center(), Align2::CENTER_CENTER, glyph, icon_font(16.0), color);
     }
     response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), label));

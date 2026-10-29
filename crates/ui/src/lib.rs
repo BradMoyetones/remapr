@@ -5,4 +5,6 @@ mod theme;
 mod widgets;
 
 pub use theme::{Palette, icon, install, semibold};
-pub use widgets::{KeyState, card, danger_banner, icon_button, icon_text, kbd, primary_button, switch};
+pub use widgets::{
+    KeyState, card, danger_banner, danger_icon_button, icon_button, icon_text, kbd, primary_button, switch,
+};

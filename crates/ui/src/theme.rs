@@ -101,6 +101,9 @@ pub fn install(ctx: &Context) {
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 6.0);
         style.spacing.interact_size.y = 32.0;
+        // Tooltips name icon-only buttons: show them at once, even while the pointer still moves.
+        style.interaction.tooltip_delay = 0.0;
+        style.interaction.show_tooltips_only_when_still = false;
     });
     ctx.set_visuals_of(Theme::Light, visuals(Visuals::light(), &Palette::LIGHT));
     ctx.set_visuals_of(Theme::Dark, visuals(Visuals::dark(), &Palette::DARK));

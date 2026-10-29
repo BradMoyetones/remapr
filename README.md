@@ -30,10 +30,11 @@ See [ROADMAP.md](ROADMAP.md) for what comes next (auto-update, shortcuts, per-ap
 
 ## Installing
 
-Download `Remapr-<version>-x64.msi` and run it. Windows asks for administrator rights once. The
+Download `Remapr-<version>-x64.msi` and run it. A short wizard (in Spanish) shows the licence and
+lets you pick the folder; Windows asks for administrator rights once, when installing starts. The
 installer:
 
-- puts Remapr in `C:\Program Files\Remapr`, with a Start menu entry;
+- puts Remapr in `C:\Program Files\Remapr` (or the folder you chose), with a Start menu entry;
 - registers a scheduled task, `Remapr`, that starts it hidden in the tray when you sign in, with
   the highest rights your account has (so remapping reaches admin windows too);
 - opens Remapr when it finishes.

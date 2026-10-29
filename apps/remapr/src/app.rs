@@ -8,7 +8,8 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use remapr_engine::{Engine, Vk, key_name};
 use remapr_platform::{SingleInstance, startup};
 use remapr_ui::{
-    KeyState, Palette, card, danger_banner, icon, icon_button, icon_text, kbd, primary_button, semibold, switch,
+    KeyState, Palette, card, danger_banner, danger_icon_button, icon, icon_button, icon_text, kbd, primary_button,
+    semibold, switch,
 };
 
 use crate::config::{Config, Mapping, Theme};
@@ -385,7 +386,7 @@ impl App {
                         ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
                         kbd(ui, &key_name(m.to), KeyState::Idle);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if icon_button(ui, icon::DELETE, "Quitar este mapeo").clicked() {
+                            if danger_icon_button(ui, icon::DELETE, "Quitar este mapeo").clicked() {
                                 remove = Some(i);
                             }
                         });

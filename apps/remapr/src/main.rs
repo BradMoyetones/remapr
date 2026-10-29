@@ -58,13 +58,13 @@ fn acquire_instance() -> Option<Option<SingleInstance>> {
     }
 }
 
-/// shortcut: "installed" means under Program Files, where the MSI always puts Remapr and a dev build
-/// never is. Read the install folder from the registry instead if the MSI ever lets users pick it.
+/// Whether this is the copy the installer put in place (wherever the user chose), not a dev build.
 fn is_installed() -> bool {
-    let (Ok(exe), Some(program_files)) = (std::env::current_exe(), std::env::var_os("ProgramFiles")) else {
+    let (Ok(exe), Some(dir)) = (std::env::current_exe(), remapr_platform::install_dir()) else {
         return false;
     };
-    exe.starts_with(program_files)
+    let folder = |p: &std::path::Path| p.to_string_lossy().trim_end_matches('\\').to_lowercase();
+    exe.parent().is_some_and(|parent| folder(parent) == folder(&dir))
 }
 
 /// Ends an installer step with the exit code msiexec checks.
