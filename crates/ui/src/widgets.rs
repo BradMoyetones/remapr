@@ -73,25 +73,36 @@ fn icon_button_toned(ui: &mut Ui, icon: Icon, label: &str, danger: bool) -> Resp
             ui.painter().rect_stroke(rect, CornerRadius::same(8), Stroke::new(1.5, ring), StrokeKind::Inside);
         }
         let color = if hovered { active } else { idle };
-        paint_icon(ui, icon, rect.center(), 16.0, color);
+        paint_icon(ui, ui.painter(), icon, rect.center(), 16.0, color);
     }
     response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), label));
     response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(label)
 }
 
 /// The one main action of a screen: filled with the accent colour, with an optional leading icon.
+///
+/// Disabled, it turns grey with a label that can still be read. egui fades a disabled widget on top
+/// of whatever it draws, which took the faded accent to near nothing, so this one paints on a
+/// painter of its own.
 pub fn primary_button(ui: &mut Ui, icon: Option<Icon>, text: &str) -> Response {
     let p = Palette::of(ui);
     let enabled = ui.is_enabled();
+    let (painter, ink) = if enabled {
+        (ui.painter().clone(), p.on_accent)
+    } else {
+        (ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(ui.clip_rect()), p.muted)
+    };
     let galley =
-        ui.painter().layout_no_wrap(text.to_owned(), FontId::new(14.0, FontFamily::Name(SEMIBOLD.into())), p.on_accent);
+        ui.painter().layout_no_wrap(text.to_owned(), FontId::new(14.0, FontFamily::Name(SEMIBOLD.into())), ink);
     let icon_w = if icon.is_some() { 22.0 } else { 0.0 };
     let size = vec2(galley.size().x + icon_w + 28.0, 34.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
-        let fill = if response.hovered() || response.has_focus() { p.accent_hover } else { p.accent };
-        let fill = if enabled { fill } else { fill.gamma_multiply(0.45) };
-        let painter = ui.painter();
+        let fill = match (enabled, response.hovered() || response.has_focus()) {
+            (false, _) => p.border,
+            (true, true) => p.accent_hover,
+            (true, false) => p.accent,
+        };
         painter.rect_filled(rect, CornerRadius::same(8), fill);
         if response.has_focus() {
             painter.rect_stroke(
@@ -103,10 +114,10 @@ pub fn primary_button(ui: &mut Ui, icon: Option<Icon>, text: &str) -> Response {
         }
         let mut x = rect.left() + 14.0;
         if let Some(icon) = icon {
-            paint_icon(ui, icon, egui::pos2(x + 8.0, rect.center().y), 16.0, p.on_accent);
+            paint_icon(ui, &painter, icon, egui::pos2(x + 8.0, rect.center().y), 16.0, ink);
             x += icon_w;
         }
-        painter.galley(egui::pos2(x, rect.center().y - galley.size().y / 2.0), galley, p.on_accent);
+        painter.galley(egui::pos2(x, rect.center().y - galley.size().y / 2.0), galley, ink);
     }
     response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, text));
     if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response }
@@ -180,6 +191,11 @@ pub fn icon_label(ui: &mut Ui, icon: Icon, size: f32, color: Color32) -> Respons
     response
 }
 
-fn paint_icon(ui: &Ui, icon: Icon, center: egui::Pos2, size: f32, color: Color32) {
-    icon.image(size, color).paint_at(ui, Rect::from_center_size(center, Vec2::splat(size)));
+fn paint_icon(ui: &Ui, painter: &egui::Painter, icon: Icon, center: egui::Pos2, size: f32, color: Color32) {
+    let rect = Rect::from_center_size(center, Vec2::splat(size));
+    if let Ok(egui::load::TexturePoll::Ready { texture }) = icon.image(size, color).load_for_size(ui.ctx(), rect.size())
+    {
+        let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        painter.image(texture.id, rect, uv, color);
+    }
 }

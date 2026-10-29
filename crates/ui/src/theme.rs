@@ -289,6 +289,8 @@ mod tests {
                 ("accent", p.accent, "accent_soft", p.accent_soft, AA),
                 ("on_accent", p.on_accent, "accent", p.accent, AA),
                 ("on_accent", p.on_accent, "accent_hover", p.accent_hover, AA),
+                // A disabled primary button: exempt from WCAG, still meant to be read.
+                ("muted", p.muted, "border", p.border, CONTROL),
             ];
             for (s, bg) in [("bg", p.bg), ("surface", p.surface), ("surface_hover", p.surface_hover)] {
                 pairs.push(("text", p.text, s, bg, AAA));

@@ -78,7 +78,7 @@ fn gallery(ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             switch(ui, &mut false, "Off");
-            ui.add_enabled_ui(false, |ui| primary_button(ui, None, "Disabled"));
+            ui.add_enabled_ui(false, |ui| primary_button(ui, Some(icon::ADD), "Disabled"));
             ui.label(RichText::new("Áé ñ ¿¡ · ⌘ ⌥ ⇧ ⌃ ← → −").color(p.text));
         });
         ui.horizontal_wrapped(|ui| {
