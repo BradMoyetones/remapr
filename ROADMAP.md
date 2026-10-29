@@ -21,15 +21,16 @@ used on a real keyboard.
   opens, pauses or quits, and the icon dims while paused.
 - Single instance: launching again brings the existing window forward, even across elevation.
 
-## Phase 3: Installer and administrator mode
+## Phase 3: Installer and administrator mode (done)
 
-- MSI installer (WiX, in `packaging/windows/`) that installs per machine to `Program Files` and
-  asks for administrator rights once, at install time.
-- At sign-in Remapr starts hidden in the tray through a scheduled task with "run with highest
-  privileges", so it runs as administrator (remaps keys inside elevated windows too) without a
-  UAC prompt on every boot.
-- Clean uninstall: removes the task, files and shortcuts; keeps the user's settings unless asked.
-- `cargo xtask dist` builds the release executable and the MSI.
+- MSI installer (WiX 5, `packaging/windows/remapr.wxs`), per machine into `Program Files`; asks
+  for administrator rights once, at install time, and opens Remapr when done.
+- At sign-in Remapr starts hidden in the tray through a scheduled task that runs with the
+  highest rights the user has: elevated for administrators, no UAC prompt on every boot.
+- A plain launch of the installed app hands over to that elevated copy.
+- "Iniciar con Windows" switch in the app (keeps the task, drops its sign-in trigger).
+- Clean uninstall: ends Remapr, removes the task, files and shortcut; keeps the user's settings.
+- `cargo xtask dist` builds the release executable, the MSI and its SHA-256; CI builds it too.
 
 ## Phase 4: Auto-update
 
@@ -37,7 +38,8 @@ used on a real keyboard.
 - An unobtrusive "New version available" banner in the app; one click downloads the MSI,
   verifies its SHA-256, installs it and restarts Remapr.
 - Since Remapr already runs elevated, updating needs no extra UAC prompt.
-- Release workflow: pushing a `v*` tag builds, packages and publishes the MSI and its checksum.
+- Release workflow: pushing a `v*` tag runs `cargo xtask dist` and publishes the MSI and its
+  checksum as a GitHub release.
 
 ## Phase 5: Shortcuts and per-app rules
 

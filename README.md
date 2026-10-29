@@ -21,11 +21,24 @@ beyond a single small process.
 - Lives in the notification area: closing the window keeps your keys remapped; the tray icon
   opens, pauses or quits Remapr, and dims while paused.
 - One instance per session: launching Remapr again brings the running window forward.
+- Starts with Windows as administrator, so it also remaps keys inside elevated windows, without a
+  UAC prompt at every sign-in. Can be turned off from the app.
 - Light, dark, or follow Windows, including the native title bar.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
-See [ROADMAP.md](ROADMAP.md) for what comes next (installer, start with Windows, auto-update,
-shortcuts).
+See [ROADMAP.md](ROADMAP.md) for what comes next (auto-update, shortcuts, per-app rules).
+
+## Installing
+
+Download `Remapr-<version>-x64.msi` and run it. Windows asks for administrator rights once. The
+installer:
+
+- puts Remapr in `C:\Program Files\Remapr`, with a Start menu entry;
+- registers a scheduled task, `Remapr`, that starts it hidden in the tray when you sign in, with
+  the highest rights your account has (so remapping reaches admin windows too);
+- opens Remapr when it finishes.
+
+Uninstall it from Settings > Apps. Your mappings stay in `%APPDATA%\Remapr` in case you come back.
 
 ## Requirements
 
@@ -58,7 +71,8 @@ cargo fmt --all --check
 
 Windows does not let a normal process change keys typed into elevated windows (Task Manager,
 installers, terminals run as administrator). To test that, start your terminal as administrator
-before `cargo run`. The installer (phase 3) will set this up automatically for users.
+before `cargo run`. Installed copies always run elevated through the sign-in task: a plain launch
+from the Start menu hands over to it.
 
 ### Changing the logo
 
@@ -70,13 +84,21 @@ commit the results:
 cargo xtask icons
 ```
 
-## Building a release
+## Building the installer
 
 ```sh
-cargo build --release
+cargo xtask dist
 ```
 
-The executable is `target\release\remapr.exe`. It is self-contained: copy it anywhere and run it.
+This builds the release executable and `target\dist\Remapr-<version>-x64.msi`, with its SHA-256
+in a `.sha256` file beside it. The first run downloads WiX 5 from NuGet into `target\wix` (version
+and checksum pinned in `xtask`); WiX runs on the .NET runtime, 6 or newer, which most Windows
+machines already have. The installer source is `packaging/windows/remapr.wxs`.
+
+CI builds the installer on every push: download it from the run's artifacts to test a change.
+
+`target\release\remapr.exe` alone is self-contained too: copy it anywhere and run it, without the
+sign-in task.
 
 ## Project layout
 
@@ -87,9 +109,10 @@ remapr/
 ├── assets/              Logo (SVG, light and dark) and the generated app icons
 ├── crates/
 │   ├── engine/          Global keyboard hook and key injection
-│   ├── platform/        Windows integration: single instance, native window icon
+│   ├── platform/        Windows integration: single instance, elevation, sign-in task, window
 │   └── ui/              Design system: light/dark tokens, fonts, Kbd, buttons, switch, cards
-├── xtask/               Repository chores (`cargo xtask icons`)
+├── packaging/windows/   The installer (WiX)
+├── xtask/               Repository chores (`cargo xtask icons`, `cargo xtask dist`)
 └── .github/workflows/   CI
 ```
 

@@ -16,6 +16,11 @@ layout and ROADMAP.md for the phases.
 - The window theme follows `ctx.set_theme`: egui syncs the native title bar itself
   (`Options::sync_window_theme`). Don't send `ViewportCommand::SetTheme` by hand; it fights that sync.
 - Icons are generated: edit `assets/logo-*.svg`, run `cargo xtask icons`, commit the outputs.
+- The installer runs `remapr.exe --register-task` / `--unregister-task` as SYSTEM: `main` handles
+  them before anything that needs a window or a user session.
+- Never change the MSI's `UpgradeCode`; upgrades (and the updater) depend on it.
+- Check window chrome (title bar colour, visibility) with real screen pixels, not `PrintWindow`:
+  it redraws the frame and hides bugs.
 - A new crate goes in `crates/<name>`, is named `remapr-<name>` and inherits workspace lints.
 
 ## Before committing

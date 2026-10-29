@@ -5,14 +5,37 @@ mod app;
 mod config;
 mod tray;
 
+use std::time::Duration;
+
+use remapr_platform::{SingleInstance, startup};
+
 fn main() -> eframe::Result {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let has = |flag: &str| args.iter().any(|a| a == flag);
+    // Steps the installer runs, elevated. An upgrade keeps the user's "start at sign-in" choice.
+    if has("--register-task") {
+        let at_sign_in = startup::starts_at_sign_in().unwrap_or(true);
+        installer_step(std::env::current_exe().and_then(|exe| startup::register(&exe, at_sign_in)));
+    }
+    if has("--unregister-task") {
+        installer_step(startup::unregister());
+    }
+    let background = has(startup::BACKGROUND_ARG);
+
     // One Remapr per session: a second launch shows the running one's window instead.
-    let instance = match remapr_platform::SingleInstance::acquire() {
-        Ok(None) => return Ok(()),
-        Ok(instance) => instance,
-        // Couldn't tell; running twice beats not running at all.
-        Err(_) => None,
-    };
+    let Some(mut instance) = acquire_instance() else { return Ok(()) };
+    // An installed Remapr runs elevated through its sign-in task, so remapping also reaches admin
+    // windows, with no UAC prompt. A plain launch hands over to that copy.
+    if !background && is_installed() && !remapr_platform::is_elevated() {
+        drop(instance.take());
+        if startup::run().is_ok() && SingleInstance::request_show(Duration::from_secs(3)) {
+            return Ok(());
+        }
+        // No task, or it didn't start: run here, without admin rights.
+        let Some(again) = acquire_instance() else { return Ok(()) };
+        instance = again;
+    }
+
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Remapr")
@@ -22,5 +45,32 @@ fn main() -> eframe::Result {
             .with_icon(eframe::egui::IconData::default()),
         ..Default::default()
     };
-    eframe::run_native("Remapr", options, Box::new(|cc| Ok(Box::new(app::App::new(cc, instance)))))
+    eframe::run_native("Remapr", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, instance, background)))))
+}
+
+/// `None` when another Remapr already runs in this session (it was asked to show itself).
+/// `Some(None)` when that couldn't be checked: running twice beats not running at all.
+fn acquire_instance() -> Option<Option<SingleInstance>> {
+    match SingleInstance::acquire() {
+        Ok(None) => None,
+        Ok(instance) => Some(instance),
+        Err(_) => Some(None),
+    }
+}
+
+/// shortcut: "installed" means under Program Files, where the MSI always puts Remapr and a dev build
+/// never is. Read the install folder from the registry instead if the MSI ever lets users pick it.
+fn is_installed() -> bool {
+    let (Ok(exe), Some(program_files)) = (std::env::current_exe(), std::env::var_os("ProgramFiles")) else {
+        return false;
+    };
+    exe.starts_with(program_files)
+}
+
+/// Ends an installer step with the exit code msiexec checks.
+fn installer_step(result: std::io::Result<()>) -> ! {
+    if let Err(e) = &result {
+        eprintln!("remapr: {e}");
+    }
+    std::process::exit(if result.is_ok() { 0 } else { 1 })
 }

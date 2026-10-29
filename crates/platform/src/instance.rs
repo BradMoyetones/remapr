@@ -6,6 +6,7 @@
 
 use std::io;
 use std::ptr::null_mut;
+use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, LocalFree, WAIT_OBJECT_0,
@@ -14,7 +15,9 @@ use windows_sys::Win32::Security::Authorization::{
     ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 use windows_sys::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
-use windows_sys::Win32::System::Threading::{CreateEventW, CreateMutexW, INFINITE, SetEvent, WaitForSingleObject};
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, CreateMutexW, EVENT_MODIFY_STATE, INFINITE, OpenEventW, SetEvent, WaitForSingleObject,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
 
 use crate::wide;
@@ -24,8 +27,10 @@ const SHOW_EVENT: &str = "Local\\Remapr.Show";
 /// Everyone may use the objects, and processes of any integrity level may signal them.
 const SDDL: &str = "D:(A;;GA;;;WD)S:(ML;;NW;;;LW)";
 
+/// Holding it is the lock; dropping it lets another Remapr become the one.
 pub struct SingleInstance {
-    /// A raw `HANDLE`, stored as an integer so the listener thread can own it.
+    // Raw `HANDLE`s, stored as integers so the listener thread can own them.
+    mutex: usize,
     show_event: usize,
 }
 
@@ -64,20 +69,54 @@ impl SingleInstance {
                 }
                 return Ok(None);
             }
-            // The mutex stays open for the life of the process: holding it is the lock.
-            Ok(Some(Self { show_event: event as usize }))
+            Ok(Some(Self { mutex: mutex as usize, show_event: event as usize }))
         }
     }
 
     /// Calls `on_show`, on a background thread, each time another launch asks for the window.
+    /// The thread keeps the lock for the rest of the process.
     pub fn listen(self, on_show: impl Fn() + Send + 'static) {
-        let event = self.show_event;
         let _ = std::thread::Builder::new().name("remapr-instance".into()).spawn(move || {
-            // SAFETY: waiting on an event handle this process owns and never closes.
-            while unsafe { WaitForSingleObject(event as HANDLE, INFINITE) } == WAIT_OBJECT_0 {
+            // Move all of `self` in (a closure would only capture the field it reads), or it is
+            // dropped right here and releases the lock.
+            let instance = self;
+            // SAFETY: waiting on an event handle that `instance`, owned by this thread, keeps open.
+            while unsafe { WaitForSingleObject(instance.show_event as HANDLE, INFINITE) } == WAIT_OBJECT_0 {
                 on_show();
             }
         });
+    }
+
+    /// Asks the Remapr that is starting up (or running) to show its window, waiting up to
+    /// `timeout` for it to appear. `false` if it never did.
+    pub fn request_show(timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            // SAFETY: opening, signalling and closing a named event.
+            unsafe {
+                let event = OpenEventW(EVENT_MODIFY_STATE, 0, wide(SHOW_EVENT).as_ptr());
+                if !event.is_null() {
+                    AllowSetForegroundWindow(ASFW_ANY);
+                    SetEvent(event);
+                    CloseHandle(event);
+                    return true;
+                }
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+impl Drop for SingleInstance {
+    fn drop(&mut self) {
+        // SAFETY: handles this struct owns.
+        unsafe {
+            CloseHandle(self.show_event as HANDLE);
+            CloseHandle(self.mutex as HANDLE);
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver};
 use eframe::egui::{self, Align, Frame, Layout, Margin, RichText, Sense, ThemePreference, ViewportCommand, vec2};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use remapr_engine::{Engine, Vk, key_name};
-use remapr_platform::SingleInstance;
+use remapr_platform::{SingleInstance, startup};
 use remapr_ui::{
     KeyState, Palette, card, danger_banner, icon, icon_button, icon_text, kbd, primary_button, semibold, switch,
 };
@@ -40,13 +40,22 @@ pub struct App {
     /// The first close explains where Remapr went before hiding.
     tray_hint_open: bool,
     quitting: bool,
+    /// Started at sign-in: the window stays in the tray until asked for.
+    start_hidden: bool,
+    elevated: bool,
+    /// `None` when Remapr isn't installed (no sign-in task to switch).
+    starts_at_sign_in: Option<bool>,
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, instance: Option<SingleInstance>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, instance: Option<SingleInstance>, background: bool) -> Self {
         remapr_ui::install(&cc.egui_ctx);
         if let Ok(RawWindowHandle::Win32(handle)) = cc.window_handle().map(|h| h.as_raw()) {
             remapr_platform::use_exe_icon(handle.hwnd.get(), tray::ICON_ACTIVE);
+            remapr_platform::repaint_title_bar_when_shown(handle.hwnd.get());
+            if background {
+                remapr_platform::hide_first_show(handle.hwnd.get());
+            }
         }
         let (config, load_warning) = Config::load();
         let ctx = cc.egui_ctx.clone();
@@ -75,6 +84,9 @@ impl App {
             commands,
             tray_hint_open: false,
             quitting: false,
+            start_hidden: background,
+            elevated: remapr_platform::is_elevated(),
+            starts_at_sign_in: startup::starts_at_sign_in(),
         };
         app.apply_theme(&cc.egui_ctx);
         app.sync();
@@ -276,7 +288,7 @@ impl App {
         });
     }
 
-    fn footer(&self, ui: &mut egui::Ui) {
+    fn footer(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
         let (color, status) = match (&self.engine, self.config.enabled) {
             (None, _) => (p.danger, "Motor detenido"),
@@ -287,10 +299,38 @@ impl App {
             let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
             ui.painter().circle_filled(dot.center(), 4.0, color);
             ui.label(RichText::new(status).small().color(p.muted));
+            if !self.elevated {
+                ui.label(icon_text(icon::WARNING, 13.0).color(p.muted)).on_hover_text(
+                    "Remapr corre sin permisos de administrador: no reasigna teclas dentro de ventanas \
+                     que sí los tienen (Administrador de tareas, instaladores). Instalado, inicia con ellos.",
+                );
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(RichText::new(concat!("v", env!("CARGO_PKG_VERSION"))).small().color(p.muted));
+                if let Some(mut on) = self.starts_at_sign_in {
+                    ui.add_space(8.0);
+                    let toggled = ui
+                        .add_enabled_ui(self.elevated, |ui| switch(ui, &mut on, "Iniciar con Windows"))
+                        .inner
+                        .on_disabled_hover_text("Abre Remapr como administrador para cambiar esto.")
+                        .changed();
+                    ui.label(RichText::new("Iniciar con Windows").small().color(p.muted));
+                    if toggled {
+                        self.set_starts_at_sign_in(on);
+                    }
+                }
             });
         });
+    }
+
+    fn set_starts_at_sign_in(&mut self, on: bool) {
+        match std::env::current_exe().and_then(|exe| startup::register(&exe, on)) {
+            Ok(()) => self.starts_at_sign_in = Some(on),
+            Err(e) => {
+                let text = format!("No se pudo cambiar el inicio con Windows: {e}");
+                self.notice = Some(Notice { text, undo: None });
+            }
+        }
     }
 
     fn body(&mut self, ui: &mut egui::Ui) {
@@ -439,6 +479,10 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if std::mem::take(&mut self.start_hidden) {
+            // Tells winit the window is hidden; `hide_first_show` already kept it off screen.
+            ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+        }
         self.handle_commands(ctx);
         if self.capture == Capture::Idle {
             return;
