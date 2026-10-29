@@ -4,6 +4,7 @@
 mod app;
 mod config;
 mod tray;
+mod updates;
 
 use std::time::Duration;
 
@@ -26,7 +27,8 @@ fn main() -> eframe::Result {
     let Some(mut instance) = acquire_instance() else { return Ok(()) };
     // An installed Remapr runs elevated through its sign-in task, so remapping also reaches admin
     // windows, with no UAC prompt. A plain launch hands over to that copy.
-    if !background && is_installed() && !remapr_platform::is_elevated() {
+    let installed = is_installed();
+    if !background && installed && !remapr_platform::is_elevated() {
         drop(instance.take());
         if startup::run().is_ok() && SingleInstance::request_show(Duration::from_secs(3)) {
             return Ok(());
@@ -45,7 +47,11 @@ fn main() -> eframe::Result {
             .with_icon(eframe::egui::IconData::default()),
         ..Default::default()
     };
-    eframe::run_native("Remapr", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, instance, background)))))
+    eframe::run_native(
+        "Remapr",
+        options,
+        Box::new(move |cc| Ok(Box::new(app::App::new(cc, instance, background, installed)))),
+    )
 }
 
 /// `None` when another Remapr already runs in this session (it was asked to show itself).

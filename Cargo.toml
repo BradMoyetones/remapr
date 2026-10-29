@@ -4,7 +4,7 @@ members = ["apps/*", "crates/*", "xtask"]
 default-members = ["apps/remapr"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -15,6 +15,7 @@ repository = "https://github.com/BradMoyetones/remapr"
 remapr-engine = { path = "crates/engine" }
 remapr-platform = { path = "crates/platform" }
 remapr-ui = { path = "crates/ui" }
+remapr-update = { path = "crates/update" }
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
 raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }

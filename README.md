@@ -23,10 +23,12 @@ beyond a single small process.
 - One instance per session: launching Remapr again brings the running window forward.
 - Starts with Windows as administrator, so it also remaps keys inside elevated windows, without a
   UAC prompt at every sign-in. Can be turned off from the app.
+- Updates itself: when a new release is out, a banner offers it; one click downloads it, checks
+  its SHA-256, installs it and restarts Remapr.
 - Light, dark, or follow Windows, including the native title bar.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
-See [ROADMAP.md](ROADMAP.md) for what comes next (auto-update, shortcuts, per-app rules).
+See [ROADMAP.md](ROADMAP.md) for what comes next (shortcuts, per-app rules).
 
 ## Installing
 
@@ -101,6 +103,20 @@ CI builds the installer on every push: download it from the run's artifacts to t
 `target\release\remapr.exe` alone is self-contained too: copy it anywhere and run it, without the
 sign-in task.
 
+## Releasing
+
+1. Bump `version` in the root `Cargo.toml` and commit.
+2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
+
+The `Release` workflow checks that the tag matches the version, runs `cargo xtask dist` and
+publishes the MSI and its `.sha256` as a GitHub release, with notes generated from the commits
+(edit them on GitHub if you like). Installed copies check GitHub a few seconds after starting and
+every 6 hours, and offer the update; its "Novedades" link opens that release page.
+
+To try the update flow without publishing, start a debug build with `REMAPR_UPDATES_DIR` pointing
+at a folder laid out like GitHub's (`latest.json` plus `v<version>/` with the files); see
+`remapr_update::Source::local`.
+
 ## Project layout
 
 ```
@@ -111,7 +127,8 @@ remapr/
 ├── crates/
 │   ├── engine/          Global keyboard hook and key injection
 │   ├── platform/        Windows integration: single instance, elevation, sign-in task, window
-│   └── ui/              Design system: light/dark tokens, fonts, Kbd, buttons, switch, cards
+│   ├── ui/              Design system: light/dark tokens, fonts, Kbd, buttons, switch, cards
+│   └── update/          Release check, download, SHA-256 check and install (GitHub Releases)
 ├── packaging/windows/   The installer (WiX)
 ├── xtask/               Repository chores (`cargo xtask icons`, `cargo xtask dist`)
 └── .github/workflows/   CI

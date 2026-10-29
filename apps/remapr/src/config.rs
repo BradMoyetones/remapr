@@ -14,11 +14,19 @@ pub struct Config {
     pub mappings: Vec<Mapping>,
     /// The user has been told that closing the window keeps Remapr running in the tray.
     pub tray_hint_seen: bool,
+    /// The version that last ran, to say "Remapr se actualizó" once after an update.
+    pub last_version: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { enabled: true, theme: Theme::System, mappings: Vec::new(), tray_hint_seen: false }
+        Self {
+            enabled: true,
+            theme: Theme::System,
+            mappings: Vec::new(),
+            tray_hint_seen: false,
+            last_version: String::new(),
+        }
     }
 }
 
@@ -87,6 +95,7 @@ mod tests {
             theme: Theme::Dark,
             mappings: vec![Mapping { from: 0x14, to: 0x1B }],
             tray_hint_seen: true,
+            last_version: "0.1.0".into(),
         };
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);

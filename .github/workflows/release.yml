@@ -1,0 +1,33 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds the installer and publishes it, with its SHA-256, as a GitHub
+# release. Installed copies of Remapr find it there and offer to update.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: The tag must match the version in Cargo.toml
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+      - run: cargo xtask dist
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" target/dist/*.msi target/dist/*.sha256
+          --title "Remapr ${GITHUB_REF_NAME#v}" --generate-notes

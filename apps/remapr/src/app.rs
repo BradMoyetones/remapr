@@ -14,6 +14,7 @@ use remapr_ui::{
 
 use crate::config::{Config, Mapping, Theme};
 use crate::tray::{self, Command, Tray};
+use crate::updates::{self, Updates};
 
 /// Adding a mapping: first the key to change, then the key it should send.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -27,6 +28,8 @@ struct Notice {
     text: String,
     /// A deleted mapping and where it was, so "Deshacer" can put it back.
     undo: Option<(usize, Mapping)>,
+    /// A page to open from a "Novedades" button.
+    link: Option<String>,
 }
 
 pub struct App {
@@ -48,10 +51,16 @@ pub struct App {
     elevated: bool,
     /// `None` when Remapr isn't installed (no sign-in task to switch).
     starts_at_sign_in: Option<bool>,
+    updates: Updates,
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, instance: Option<SingleInstance>, background: bool) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        instance: Option<SingleInstance>,
+        background: bool,
+        installed: bool,
+    ) -> Self {
         remapr_ui::install(&cc.egui_ctx);
         let hwnd = match cc.window_handle().map(|h| h.as_raw()) {
             Ok(RawWindowHandle::Win32(handle)) => Some(handle.hwnd.get()),
@@ -66,7 +75,17 @@ impl App {
         }
         // Otherwise our own hook goes blind while this window is in front (see the function).
         remapr_platform::stop_raw_keyboard_input();
-        let (config, load_warning) = Config::load();
+        let (mut config, load_warning) = Config::load();
+        // First start after an update: say so, with a way to the release notes.
+        let mut notice = load_warning.map(|text| Notice { text, undo: None, link: None });
+        if config.last_version != updates::VERSION {
+            if !config.last_version.is_empty() {
+                let text = format!("Remapr se actualizó a la versión {}.", updates::VERSION);
+                notice = Some(Notice { text, undo: None, link: Some(remapr_update::release_page(updates::VERSION)) });
+            }
+            config.last_version = updates::VERSION.into();
+            let _ = config.save();
+        }
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
             Ok(engine) => (Some(engine), None),
@@ -82,21 +101,23 @@ impl App {
             });
         }
         let tray = Tray::new(config.enabled, sender, cc.egui_ctx.clone()).ok();
+        let elevated = remapr_platform::is_elevated();
 
         let app = Self {
             config,
             engine,
             engine_error,
             capture: Capture::Idle,
-            notice: load_warning.map(|text| Notice { text, undo: None }),
+            notice,
             tray,
             commands,
             tray_hint_open: false,
             quitting: false,
             hwnd,
             start_hidden: background,
-            elevated: remapr_platform::is_elevated(),
+            elevated,
             starts_at_sign_in: startup::starts_at_sign_in(),
+            updates: Updates::new(&cc.egui_ctx, update_source(installed), elevated),
         };
         app.apply_theme(&cc.egui_ctx);
         app.sync();
@@ -118,7 +139,8 @@ impl App {
     fn commit(&mut self) {
         self.sync();
         if let Err(e) = self.config.save() {
-            self.notice = Some(Notice { text: format!("No se pudo guardar la configuración: {e}"), undo: None });
+            self.notice =
+                Some(Notice { text: format!("No se pudo guardar la configuración: {e}"), undo: None, link: None });
         }
     }
 
@@ -237,13 +259,13 @@ impl App {
         let (from, to) = (key_name(mapping.from), key_name(mapping.to));
         if mapping.from == mapping.to {
             let text = format!("Elegiste {from} dos veces, así que no se cambió nada.");
-            self.notice = Some(Notice { text, undo: None });
+            self.notice = Some(Notice { text, undo: None, link: None });
             return;
         }
         if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.from == mapping.from) {
             existing.to = mapping.to;
             let text = format!("{from} ya estaba reasignada. Ahora envía {to}.");
-            self.notice = Some(Notice { text, undo: None });
+            self.notice = Some(Notice { text, undo: None, link: None });
         } else {
             self.config.mappings.push(mapping);
         }
@@ -253,7 +275,7 @@ impl App {
     fn remove(&mut self, index: usize) {
         let m = self.config.mappings.remove(index);
         let text = format!("Se quitó {} → {}.", key_name(m.from), key_name(m.to));
-        self.notice = Some(Notice { text, undo: Some((index, m)) });
+        self.notice = Some(Notice { text, undo: Some((index, m)), link: None });
         self.commit();
     }
 
@@ -338,7 +360,7 @@ impl App {
             Ok(()) => self.starts_at_sign_in = Some(on),
             Err(e) => {
                 let text = format!("No se pudo cambiar el inicio con Windows: {e}");
-                self.notice = Some(Notice { text, undo: None });
+                self.notice = Some(Notice { text, undo: None, link: None });
             }
         }
     }
@@ -350,6 +372,7 @@ impl App {
             ui.add_space(4.0);
         }
         self.notice_bar(ui);
+        self.updates.banner(ui);
 
         let capturing = self.capture != Capture::Idle;
         if self.config.mappings.is_empty() && !capturing {
@@ -465,7 +488,7 @@ impl App {
     fn notice_bar(&mut self, ui: &mut egui::Ui) {
         let Some(notice) = &self.notice else { return };
         let p = Palette::of(ui);
-        let (mut close, mut undo) = (false, None);
+        let (mut close, mut undo, mut open) = (false, None, None);
         card(ui, false, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
@@ -475,10 +498,16 @@ impl App {
                     if notice.undo.is_some() && ui.button("Deshacer").clicked() {
                         undo = notice.undo;
                     }
+                    if notice.link.is_some() && ui.button("Novedades").clicked() {
+                        open = notice.link.clone();
+                    }
                 });
             });
         });
         ui.add_space(4.0);
+        if let Some(url) = open {
+            remapr_platform::open_in_browser(&url);
+        }
         if let Some((index, mapping)) = undo {
             self.undo(index, mapping);
         } else if close {
@@ -494,6 +523,9 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(ViewportCommand::Visible(false));
         }
         self.handle_commands(ctx);
+        if self.updates.poll() {
+            self.quit(ctx);
+        }
         if self.capture == Capture::Idle {
             return;
         }
@@ -521,4 +553,14 @@ impl eframe::App for App {
             self.tray_hint(ui);
         }
     }
+}
+
+/// Releases come from GitHub for the installed app. A debug build can be pointed at a test folder
+/// with `REMAPR_UPDATES_DIR` (see `remapr_update::Source::local`); other dev builds never update.
+fn update_source(installed: bool) -> Option<remapr_update::Source> {
+    if installed {
+        return Some(remapr_update::Source::github());
+    }
+    let dir = std::env::var_os("REMAPR_UPDATES_DIR").filter(|_| cfg!(debug_assertions))?;
+    Some(remapr_update::Source::local(std::path::Path::new(&dir)))
 }

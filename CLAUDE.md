@@ -24,6 +24,10 @@ layout and ROADMAP.md for the phases.
 - The installer runs `remapr.exe --register-task` / `--unregister-task` as SYSTEM: `main` handles
   them before anything that needs a window or a user session.
 - Never change the MSI's `UpgradeCode`; upgrades (and the updater) depend on it.
+- The updater reads only the version from GitHub and builds download URLs itself; keep it that
+  way. Release asset names (`Remapr-<version>-x64.msi` and `.sha256`) are a contract between
+  `xtask dist`, the release workflow and `crates/update`.
+- Releases are made by pushing a `v<version>` tag matching `Cargo.toml` (see README, Releasing).
 - Check window chrome (title bar colour, visibility) with real screen pixels, not `PrintWindow`:
   it redraws the frame and hides bugs.
 - A new crate goes in `crates/<name>`, is named `remapr-<name>` and inherits workspace lints.

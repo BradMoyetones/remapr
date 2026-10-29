@@ -32,12 +32,14 @@ used on a real keyboard.
 - Clean uninstall: ends Remapr, removes the task, files and shortcut; keeps the user's settings.
 - `cargo xtask dist` builds the release executable, the MSI and its SHA-256; CI builds it too.
 
-## Phase 4: Auto-update
+## Phase 4: Auto-update (done)
 
+- Installer wizard (WixUI_InstallDir, Spanish): licence, folder choice, Remapr's own art.
 - `crates/update`: checks GitHub Releases of `BradMoyetones/remapr`, compares versions.
-- An unobtrusive "New version available" banner in the app; one click downloads the MSI,
-  verifies its SHA-256, installs it and restarts Remapr.
+- A "Nueva versión disponible" banner in the app; one click downloads the MSI, verifies its
+  SHA-256, installs it and restarts Remapr. "Novedades" opens the release page, as ArtCraft does.
 - Since Remapr already runs elevated, updating needs no extra UAC prompt.
+- After an update, a notice says so once, with a link to the notes.
 - Release workflow: pushing a `v*` tag runs `cargo xtask dist` and publishes the MSI and its
   checksum as a GitHub release.
 

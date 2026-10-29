@@ -15,6 +15,7 @@ workspace = true
 remapr-engine = { workspace = true }
 remapr-platform = { workspace = true }
 remapr-ui = { workspace = true }
+remapr-update = { workspace = true }
 eframe = { workspace = true }
 raw-window-handle = { workspace = true }
 serde = { workspace = true }
