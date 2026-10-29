@@ -61,9 +61,103 @@ used on a real keyboard.
   across monitors with different DPI.
 - Debug builds run beside the installed app, with their own settings.
 
+## Phase 7: Builds everywhere
+
+The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No new features.
+
+- The workspace builds, lints and tests on Windows, macOS and Linux. CI runs on all three; the
+  installer is still built on Windows.
+- `crates/platform` is one facade over a module per system. The Win32 code moves to
+  `platform/src/windows/`. macOS and Linux get what is simple (settings folder, opening links,
+  display language) and report the rest as unsupported.
+- The keyboard hook and the tray icon stay Windows-only. On macOS and Linux the window opens and
+  says that remapping isn't available on that system yet.
+- Windows behaves exactly as in 0.4.
+
+## Phase 8: Universal keys
+
+- `crates/core` (`remapr-core`) holds chords, modifiers, rules and the remap decision, with no
+  OS code. Its tests run on every system.
+- Keys are identified by HID usage and stored by name (`from = "CapsLock"`). Modifiers are Ctrl,
+  Shift, Alt and Meta, shown as Win, ⌘ or Super.
+- The AltGr phantom Ctrl and the dummy key tapped before releasing Alt or Win move to the Windows
+  backend.
+- A per-app rule matches a program file, a macOS bundle id or a Linux window class.
+- Settings and export files carry a version. 0.4 files, with Win32 key numbers, migrate; the
+  migration is tested against real ones.
+
+## Phase 9: One engine contract
+
+- The app talks to the engine through one API: start, rules, pause, capture and capabilities,
+  with events back (capture done, app in front changed, permission changed, error).
+- `Capabilities` says, per function, whether it works, needs a permission, needs a driver or
+  isn't available. The UI reads that instead of asking which system it runs on.
+- A fake backend tests the capture flow and the UI's states on any system.
+- `cargo xtask layers` fails if `core` or the engine depend on egui.
+- Logs go to a rotated file in the settings folder.
+
+## Phase 10: macOS keyboard
+
+- Remapping through `CGEventTap` and `CGEventPost`. The app in front comes from `NSWorkspace`
+  (bundle id). The tap is turned back on if macOS disables it for being slow.
+- A first-run screen asks for the Accessibility and Input Monitoring permissions and notices
+  when they are granted. A notice explains when Secure Input (password fields) pauses remapping.
+- Menu bar icon, start at login, settings in `~/Library/Application Support`.
+- Remapr's own icon set replaces Segoe Fluent Icons; fonts look native; texts no longer name
+  Windows where they mean the system.
+- `cargo xtask dist` builds `Remapr.app` and a DMG. The updater offers new versions and opens
+  their page.
+
+## Phase 11: Linux keyboard
+
+- `evdev` with `EVIOCGRAB` and a `uinput` virtual keyboard; keyboards plugged in later are picked
+  up.
+- A udev rule ships in the packages. The first-run screen checks the permissions.
+- The app in front: on X11 first, then on Wayland compositor by compositor. Per-app rules are
+  marked as partial where the app in front can't be known.
+- Tray icon, start at login (XDG autostart), AppImage and deb.
+
+## Phase 12: App shell and profiles
+
+- A sidebar: Keyboard, Mouse, Macros, Controllers, Profiles, Settings.
+- One gate widget for what needs a permission, needs a driver or isn't available on this
+  system: the section stays visible, dimmed under a translucent veil, with a card saying why.
+- Profiles: named sets of mappings, switched by the app in front or by a shortcut. The tray shows
+  the active one.
+- A warning when mapping a shortcut the system keeps for itself (Ctrl+Alt+Del, Cmd+Tab…).
+
+## Phase 13: Mouse and macros
+
+- Mouse buttons, wheel and clicks, as source and as target, on all three systems.
+- Actions beyond a chord: sequences with pauses, typing text, turbo, toggle, switching profile.
+  They play on their own thread, never inside the hook.
+- A macro recorder built on capture.
+- Then dual-role keys (Caps Lock: Esc on tap, Ctrl on hold) and layers.
+
+## Phase 14: Controllers to keyboard and mouse
+
+- Physical controllers are read on all three systems, macOS included: `gilrs` first, Remapr's
+  own backends where grabbing or hiding them needs it.
+- A live view of the controller (Xbox, DualSense, Switch Pro) drawn in egui. A button is mapped
+  by pressing it, like a key.
+- Sticks to mouse, with dead zones and response curves.
+- Shaped by the study of reWASD's features (`docs/research/rewasd.md`, see the vision).
+
+## Phase 15: Virtual controllers
+
+- Linux first: a virtual Xbox 360 or DualShock 4 through `uinput`, with the physical controller
+  grabbed. No driver needed.
+- Windows: through ViGEmBus when installed (detected, with help to install it), and HidHide to
+  hide the physical controller. Both sit behind a trait, so another driver can replace them.
+- macOS: the section is shown locked, with the reason.
+
 ## Later
 
 - Code signing with Azure Trusted Signing, so SmartScreen does not warn on first install: sign
   `remapr.exe` and the MSI in the release workflow, with the account's credentials as secrets.
+- Maybe: an Apple Developer ID (99 USD a year) to sign and notarize the macOS app, so Gatekeeper
+  opens it without a warning.
 - The installer in English too (it is Spanish only).
 - A language picker, if following Windows isn't enough for someone.
+- Beyond Phase 15: profiles per device, combos, gyro to mouse, rumble, shared profiles and a
+  `remapr-cli` to switch profiles from scripts.
