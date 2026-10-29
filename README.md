@@ -29,6 +29,7 @@ beyond a single small process.
 - Updates itself: when a new release is out, a banner offers it; one click downloads it, checks
   its SHA-256, installs it and restarts Remapr.
 - Light, dark, or follow Windows, including the native title bar.
+- In English or Spanish, following Windows' display language.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next (shortcuts, per-app rules).
@@ -80,6 +81,19 @@ Windows does not let a normal process change keys typed into elevated windows (T
 installers, terminals run as administrator). To test that, start your terminal as administrator
 before `cargo run`. Installed copies always run elevated through the sign-in task: a plain launch
 from the Start menu hands over to it.
+
+### Translations
+
+The code holds the English text (`tr!("Add")`, `trn!("{n} mapping|{n} mappings", n)` for counts,
+`key!("Caps Lock")` for key names). Each other language is a catalog in `apps/remapr/locales/`, in
+the format of ArtCraft's craft-i18n: one line per text, `context <TAB> English <TAB> translation`.
+Remapr picks the first of Windows' display languages it has a catalog for (`es-CO` uses `es`), and
+shows English for anything a catalog lacks.
+
+To add a language, copy `es.tsv` to `<code>.tsv`, translate the third column, and add it to
+`CATALOGS` in `apps/remapr/src/i18n.rs`; if its plurals aren't "one is 1, other for the rest", add
+its rule to `i18n::plural`. `cargo test` fails while a catalog misses a text or a `{placeholder}`.
+A debug build can be started in any language with `REMAPR_LANG=<code>`.
 
 ### Changing the logo
 

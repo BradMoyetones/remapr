@@ -19,7 +19,10 @@ layout and ROADMAP.md for the phases.
 - UI code takes colours from `remapr_ui::Palette` and fonts from the theme. No hard-coded colours
   in apps.
 - New widgets go in `crates/ui` and report themselves with `widget_info` for screen readers.
-- User-facing text is Spanish for now; code, comments and docs are English.
+- User-facing text is written in English in the code, through `tr!`, `trn!` (counts) and `key!`
+  (key names), and translated in `apps/remapr/locales/<lang>.tsv` (craft-i18n's format). The test
+  `catalogs_cover_the_code` fails when a catalog lacks a text the code uses. Code, comments and
+  docs are English.
 - The window theme follows `ctx.set_theme`: egui syncs the native title bar itself
   (`Options::sync_window_theme`). Don't send `ViewportCommand::SetTheme` by hand; it fights that
   sync. `keep_title_bar_theme` re-applies the theme after Windows settings changes, which winit

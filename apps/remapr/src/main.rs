@@ -3,6 +3,8 @@
 
 mod app;
 mod config;
+mod i18n;
+mod keys;
 mod tray;
 mod updates;
 

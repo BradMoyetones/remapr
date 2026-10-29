@@ -1,0 +1,126 @@
+# Español (es) catalog for Remapr, in the format of ArtCraft's craft-i18n.
+# Columns, separated by a TAB:  context <TAB> English source text <TAB> translation
+#   context  empty for interface text; `key` for key names (as printed on Spanish keyboards);
+#            `@plural` for counts: English `one|other`, then this language's forms, `|`-separated.
+#   `{name}` placeholders must appear in both columns. A missing entry shows in English.
+#   Lines starting with # and blank lines are ignored.
+
+	Remapr was updated to version {version}.	Remapr se actualizó a la versión {version}.
+	Couldn't start the keyboard engine: {error}	No se pudo iniciar el motor de teclado: {error}
+	Couldn't save the settings: {error}	No se pudo guardar la configuración: {error}
+	Remapr is still running	Remapr sigue funcionando
+	Your keys stay remapped. Find Remapr in the notification area, by the clock: from there you can open it, pause it or quit.	Tus teclas siguen reasignadas. Encuéntralo en la bandeja del sistema, junto al reloj: desde ahí puedes abrirlo, pausarlo o salir.
+	Got it	Entendido
+	Quit Remapr	Salir de Remapr
+	You chose {keys} twice, so nothing changed.	Elegiste {keys} dos veces, así que no se cambió nada.
+	{from} was already remapped. It now sends {to}.	{from} ya estaba reasignada. Ahora envía {to}.
+	Removed {from} → {to}.	Se quitó {from} → {to}.
+	Remapr mappings	Mapeos de Remapr
+	Export mappings	Exportar mapeos
+	remapr-mappings.toml	remapr-mapeos.toml
+	Exported {count} to {file}.	Se exportaron {count} a {file}.
+	Couldn't export: {error}	No se pudo exportar: {error}
+	Import mappings	Importar mapeos
+	Imported {count}.	Se importaron {count}.
+	Imported {count}; one replaced the mapping you had on the same keys.	Se importaron {count}; uno reemplazó al que ya tenías con las mismas teclas.
+	Imported {count}; {replaced} replaced the mappings you had on the same keys.	Se importaron {count}; {replaced} reemplazaron a los que ya tenías con las mismas teclas.
+	Couldn't import: {error}	No se pudo importar: {error}
+	Remap any key on your keyboard	Reasigna cualquier tecla de tu teclado
+	Remapping on	Remapeo activo
+	On	Activo
+	Paused	En pausa
+	Theme: same as Windows	Tema: igual que Windows
+	Theme: light	Tema: claro
+	Theme: dark	Tema: oscuro
+	More options	Más opciones
+	Export mappings…	Exportar mapeos…
+	Import mappings…	Importar mapeos…
+	Engine stopped	Motor detenido
+	Engine running	Motor activo
+	Paused: your keys work as usual	En pausa: tus teclas funcionan como siempre
+	Remapr runs without administrator rights: it doesn't remap keys inside windows that have them (Task Manager, installers). Installed, it starts with them.	Remapr corre sin permisos de administrador: no reasigna teclas dentro de ventanas que sí los tienen (Administrador de tareas, instaladores). Instalado, inicia con ellos.
+	Start with Windows	Iniciar con Windows
+	Open Remapr as administrator to change this.	Abre Remapr como administrador para cambiar esto.
+	Couldn't change starting with Windows: {error}	No se pudo cambiar el inicio con Windows: {error}
+	Remapped keys	Teclas reasignadas
+	Add	Agregar
+	Remove this mapping	Quitar este mapeo
+	Cancel	Cancelar
+	Now press the key or shortcut it should send instead.	Ahora presiona la tecla o combinación que debe enviar en su lugar.
+	Press the key or shortcut you want to change.	Presiona la tecla o combinación que quieres cambiar.
+	For a shortcut, hold Ctrl, Shift, Alt or Win and press the key. Meanwhile, the keyboard doesn't type into other apps.	Para una combinación, mantén Ctrl, Shift, Alt o Win y presiona la tecla. Mientras tanto, el teclado no escribe en otras apps.
+	No keys remapped yet	Todavía no reasignaste ninguna tecla
+	For example, turn Caps Lock into Esc. Press the button, then the two keys.	Por ejemplo, convierte Bloq Mayús en Esc. Presiona el botón y luego las dos teclas.
+	Add my first mapping	Agregar mi primer mapeo
+	Close notice	Cerrar aviso
+	Undo	Deshacer
+	What's new	Novedades
+	All apps	Todas las apps
+	Only in {app}	Solo en {app}
+	Only while this app is in front:	Solo mientras esta app está al frente:
+@plural	{n} mapping|{n} mappings	{n} mapeo|{n} mapeos
+	Check for updates	Buscar actualizaciones
+	You have the latest version (v{version}).	Ya tienes la última versión (v{version}).
+	Couldn't check for updates. {error}	No se pudo buscar actualizaciones. {error}
+	New version available: v{version}	Nueva versión disponible: v{version}
+	You have v{version}. It installs itself and Remapr restarts.	Tienes la v{version}. Se instala sola y Remapr se reinicia.
+	Update and restart	Actualizar y reiniciar
+	Later	Más tarde
+	Downloading v{version}…	Descargando la v{version}…
+	Installing v{version}. Remapr will restart by itself.	Instalando la v{version}. Remapr se reiniciará solo.
+	Couldn't update. {error}	No se pudo actualizar. {error}
+	Retry	Reintentar
+	Close	Cerrar
+	No connection.	Sin conexión.
+	No connection ({detail}).	Sin conexión ({detail}).
+	GitHub answered something unexpected ({detail}).	GitHub respondió algo inesperado ({detail}).
+	The published SHA-256 can't be read.	El SHA-256 publicado no se pudo leer.
+	The download doesn't match its published SHA-256; it was discarded.	La descarga no coincide con su SHA-256 publicado; se descartó.
+	A file couldn't be saved ({detail}).	No se pudo guardar un archivo ({detail}).
+	The update was cancelled.	Se canceló la actualización.
+	Another installation is running. Wait for it to finish and try again.	Hay otra instalación en curso. Espera a que termine y vuelve a intentarlo.
+	Windows didn't give administrator rights to install.	Windows no dio permisos de administrador para instalar.
+	Windows Installer stopped with error {code}.	Windows Installer se detuvo con el error {code}.
+	Windows Installer couldn't start or was interrupted.	Windows Installer no pudo iniciar o se interrumpió.
+	Open Remapr	Abrir Remapr
+	Pause remapping	Pausar remapeo
+	Quit	Salir
+	Remapr: on	Remapr: activo
+	Remapr: paused	Remapr: en pausa
+	Couldn't read the settings: {error}	No se pudo leer la configuración: {error}
+	The settings were damaged. A copy was saved as {file}	La configuración estaba dañada. Se guardó una copia en {file}
+	Remapr: exported mappings. Import them from Remapr's ⋯ menu.	Remapr: mapeos exportados. Impórtalos desde el menú ⋯ de Remapr.
+	The file is too big to be a Remapr export.	El archivo es demasiado grande para ser una exportación de Remapr.
+	The file isn't a Remapr export.	El archivo no es una exportación de Remapr.
+	The file has no usable mappings.	El archivo no tiene mapeos que se puedan usar.
+	Key {code}	Tecla {code}
+key	Backspace	Retroceso
+key	Pause	Pausa
+key	Caps Lock	Bloq Mayús
+key	Space	Espacio
+key	Page Up	Re Pág
+key	Page Down	Av Pág
+key	End	Fin
+key	Home	Inicio
+key	Print Screen	Impr Pant
+key	Delete	Supr
+key	Left Win	Win izq.
+key	Right Win	Win der.
+key	Menu	Menú
+key	Num Lock	Bloq Num
+key	Scroll Lock	Bloq Despl
+key	Left Shift	Shift izq.
+key	Right Shift	Shift der.
+key	Left Ctrl	Ctrl izq.
+key	Right Ctrl	Ctrl der.
+key	Right Alt	Alt Gr
+key	Back	Atrás
+key	Forward	Adelante
+key	Refresh	Recargar
+key	Mute	Silenciar
+key	Volume −	Volumen −
+key	Volume +	Volumen +
+key	Next track	Siguiente
+key	Previous track	Anterior
+key	Stop	Detener
+key	Play/Pause	Reproducir

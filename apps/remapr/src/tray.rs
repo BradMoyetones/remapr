@@ -7,6 +7,8 @@ use eframe::egui;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
+use crate::i18n::tr;
+
 /// Icon resources embedded by build.rs.
 pub const ICON_ACTIVE: u16 = 1;
 const ICON_PAUSED: u16 = 2;
@@ -26,9 +28,9 @@ pub struct Tray {
 impl Tray {
     /// Must run on the UI thread: Windows delivers tray clicks through its message loop.
     pub fn new(enabled: bool, commands: Sender<Command>, ctx: egui::Context) -> Result<Self, String> {
-        let open = MenuItem::new("Abrir Remapr", true, None);
-        let pause = CheckMenuItem::new("Pausar remapeo", true, !enabled, None);
-        let quit = MenuItem::new("Salir", true, None);
+        let open = MenuItem::new(tr!("Open Remapr"), true, None);
+        let pause = CheckMenuItem::new(tr!("Pause remapping"), true, !enabled, None);
+        let quit = MenuItem::new(tr!("Quit"), true, None);
         let menu = Menu::new();
         menu.append_items(&[&open, &pause, &PredefinedMenuItem::separator(), &quit]).map_err(|e| e.to_string())?;
 
@@ -72,7 +74,7 @@ impl Tray {
 }
 
 fn look(enabled: bool) -> (Icon, &'static str) {
-    let (id, tooltip) = if enabled { (ICON_ACTIVE, "Remapr: activo") } else { (ICON_PAUSED, "Remapr: en pausa") };
+    let (id, tooltip) = if enabled { (ICON_ACTIVE, tr!("Remapr: on")) } else { (ICON_PAUSED, tr!("Remapr: paused")) };
     // Load the exact small size so Windows doesn't shrink the 32 px one.
     let size = remapr_platform::small_icon_size();
     let icon = Icon::from_resource(id, Some((size, size))).expect("build.rs embeds both tray icons");

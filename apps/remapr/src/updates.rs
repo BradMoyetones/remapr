@@ -7,7 +7,9 @@ use std::time::Duration;
 
 use eframe::egui::{self, Align, Layout, RichText};
 use remapr_ui::{Palette, card, icon, icon_button, icon_text, primary_button, semibold};
-use remapr_update::{Release, Source};
+use remapr_update::{Error, Release, Source};
+
+use crate::i18n::tr;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Between background checks. The first one comes a few seconds after start.
@@ -84,7 +86,7 @@ impl Updates {
         }
         if self.checking {
             ui.add(egui::Spinner::new().size(14.0));
-        } else if icon_button(ui, icon::REFRESH, "Buscar actualizaciones").clicked() {
+        } else if icon_button(ui, icon::REFRESH, tr!("Check for updates")).clicked() {
             self.check_now(ui.ctx());
         }
     }
@@ -101,7 +103,7 @@ impl Updates {
             let event = match source.check(VERSION) {
                 Ok(Some(release)) => Event::Found(release),
                 Ok(None) => Event::UpToDate,
-                Err(e) => Event::CheckFailed(e),
+                Err(e) => Event::CheckFailed(describe(&e)),
             };
             let _ = sender.send(event);
             ctx.request_repaint();
@@ -116,11 +118,11 @@ impl Updates {
                 Event::Found(_) => self.checking = false,
                 Event::UpToDate => {
                     self.checking = false;
-                    self.message = Some(format!("Ya tienes la última versión (v{VERSION})."));
+                    self.message = Some(tr!("You have the latest version (v{version}).", version = VERSION));
                 }
                 Event::CheckFailed(e) => {
                     self.checking = false;
-                    self.message = Some(format!("No se pudo buscar actualizaciones. {e}"));
+                    self.message = Some(tr!("Couldn't check for updates. {error}", error = e));
                 }
                 _ => {}
             }
@@ -162,7 +164,7 @@ impl Updates {
                 remapr_update::install_result(installer.wait().ok().and_then(|s| s.code()))
             });
             if let Err(e) = result {
-                send(Event::Failed(e));
+                send(Event::Failed(describe(&e)));
             }
         });
     }
@@ -179,7 +181,7 @@ impl Updates {
                     ui.horizontal(|ui| {
                         ui.add(egui::Label::new(RichText::new(message).color(p.text)).wrap());
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if icon_button(ui, icon::CLOSE, "Cerrar aviso").clicked() {
+                            if icon_button(ui, icon::CLOSE, tr!("Close notice")).clicked() {
                                 action = Some(Action::Close);
                             }
                         });
@@ -193,22 +195,23 @@ impl Updates {
                         ui.label(icon_text(icon::DOWNLOAD, 18.0).color(p.accent));
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
-                            let title = format!("Nueva versión disponible: v{}", release.version);
+                            let title = tr!("New version available: v{version}", version = release.version);
                             ui.label(RichText::new(title).font(semibold(14.0)).color(p.text));
-                            let detail = format!("Tienes la v{VERSION}. Se instala sola y Remapr se reinicia.");
+                            let detail =
+                                tr!("You have v{version}. It installs itself and Remapr restarts.", version = VERSION);
                             ui.label(RichText::new(detail).small().color(p.muted));
                         });
                     });
                     ui.add_space(2.0);
                     ui.horizontal(|ui| {
-                        if ui.link(RichText::new("Novedades").color(p.accent)).clicked() {
+                        if ui.link(RichText::new(tr!("What's new")).color(p.accent)).clicked() {
                             action = Some(Action::Notes(release.notes_url.clone()));
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if primary_button(ui, None, "Actualizar y reiniciar").clicked() {
+                            if primary_button(ui, None, tr!("Update and restart")).clicked() {
                                 action = Some(Action::Update);
                             }
-                            if ui.button("Más tarde").clicked() {
+                            if ui.button(tr!("Later")).clicked() {
                                 action = Some(Action::Later);
                             }
                         });
@@ -218,7 +221,7 @@ impl Updates {
             State::Downloading(release, progress) => {
                 card(ui, true, |ui| {
                     ui.set_width(ui.available_width());
-                    let text = format!("Descargando la v{}…", release.version);
+                    let text = tr!("Downloading v{version}…", version = release.version);
                     ui.label(RichText::new(text).font(semibold(14.0)).color(p.text));
                     ui.add(egui::ProgressBar::new(*progress).show_percentage().fill(p.accent));
                 });
@@ -228,7 +231,8 @@ impl Updates {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        let text = format!("Instalando la v{}. Remapr se reiniciará solo.", release.version);
+                        let text =
+                            tr!("Installing v{version}. Remapr will restart by itself.", version = release.version);
                         ui.label(RichText::new(text).color(p.text));
                     });
                 });
@@ -239,16 +243,18 @@ impl Updates {
                     ui.horizontal(|ui| {
                         ui.label(icon_text(icon::WARNING, 16.0).color(p.danger));
                         ui.add(
-                            egui::Label::new(RichText::new(format!("No se pudo actualizar. {error}")).color(p.danger))
-                                .wrap(),
+                            egui::Label::new(
+                                RichText::new(tr!("Couldn't update. {error}", error = error)).color(p.danger),
+                            )
+                            .wrap(),
                         );
                     });
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if primary_button(ui, None, "Reintentar").clicked() {
+                            if primary_button(ui, None, tr!("Retry")).clicked() {
                                 action = Some(Action::Update);
                             }
-                            if ui.button("Cerrar").clicked() {
+                            if ui.button(tr!("Close")).clicked() {
                                 action = Some(Action::Close);
                             }
                         });
@@ -275,5 +281,28 @@ impl Updates {
             Some(Action::Close) => (self.state, self.message) = (State::Idle, None),
             None => {}
         }
+    }
+}
+
+/// An updater error in the user's words.
+fn describe(error: &Error) -> String {
+    match error {
+        Error::Network(detail) if detail.is_empty() => tr!("No connection.").to_owned(),
+        Error::Network(detail) => tr!("No connection ({detail}).", detail = detail),
+        Error::GitHub(detail) => tr!("GitHub answered something unexpected ({detail}).", detail = detail),
+        Error::UnreadableChecksum => tr!("The published SHA-256 can't be read.").to_owned(),
+        Error::ChecksumMismatch => {
+            tr!("The download doesn't match its published SHA-256; it was discarded.").to_owned()
+        }
+        Error::File(detail) => tr!("A file couldn't be saved ({detail}).", detail = detail),
+        Error::Installer(Some(1602)) => tr!("The update was cancelled.").to_owned(),
+        Error::Installer(Some(1618)) => {
+            tr!("Another installation is running. Wait for it to finish and try again.").to_owned()
+        }
+        Error::Installer(Some(1303 | 1730 | 1925)) => {
+            tr!("Windows didn't give administrator rights to install.").to_owned()
+        }
+        Error::Installer(Some(code)) => tr!("Windows Installer stopped with error {code}.", code = code),
+        Error::Installer(None) => tr!("Windows Installer couldn't start or was interrupted.").to_owned(),
     }
 }

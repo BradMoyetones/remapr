@@ -10,7 +10,7 @@
 //! shortcut: curl.exe ignores the system proxy settings (it honours `HTTPS_PROXY`); move to WinHTTP if
 //! users behind a proxy report failed checks.
 //!
-//! Messages are for the user, in Spanish like the rest of the app.
+//! Errors are an [`Error`]; the app puts them into words, in the user's language.
 
 use std::io::Read;
 use std::os::windows::process::CommandExt;
@@ -23,6 +23,23 @@ use sha2::{Digest, Sha256};
 
 pub const REPO: &str = "BradMoyetones/remapr";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// What went wrong, for the app to put into words.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error {
+    /// No connection, or curl.exe couldn't run; curl's own words, possibly empty.
+    Network(String),
+    /// GitHub answered something unexpected, or refused (its message, like a rate limit).
+    GitHub(String),
+    /// The published checksum file isn't one.
+    UnreadableChecksum,
+    /// The download doesn't match the published checksum; it was deleted.
+    ChecksumMismatch,
+    /// A file couldn't be written or read; the system's words.
+    File(String),
+    /// Windows Installer's exit code, or `None` when it couldn't start or was interrupted.
+    Installer(Option<i32>),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Release {
@@ -62,13 +79,13 @@ impl Source {
     }
 
     /// The latest release, if it is newer than `current` and its installer is already uploaded.
-    pub fn check(&self, current: &str) -> Result<Option<Release>, String> {
+    pub fn check(&self, current: &str) -> Result<Option<Release>, Error> {
         // No `-f`: GitHub answers "no release yet" with a 404 whose JSON says so.
         let body = curl(&["-sSL", "--max-time", "20", "-H", "Accept: application/vnd.github+json", &self.latest])?;
         self.parse(&body, current)
     }
 
-    fn parse(&self, body: &[u8], current: &str) -> Result<Option<Release>, String> {
+    fn parse(&self, body: &[u8], current: &str) -> Result<Option<Release>, Error> {
         #[derive(Deserialize)]
         struct Latest {
             tag_name: Option<String>,
@@ -82,17 +99,16 @@ impl Source {
             size: u64,
         }
 
-        let latest: Latest =
-            serde_json::from_slice(body).map_err(|e| format!("GitHub respondió algo inesperado ({e})."))?;
+        let latest: Latest = serde_json::from_slice(body).map_err(|e| Error::GitHub(e.to_string()))?;
         let Some(tag) = latest.tag_name else {
             return match latest.message.as_deref() {
                 None | Some("Not Found") => Ok(None),
-                Some(message) => Err(format!("GitHub: {message}")),
+                Some(message) => Err(Error::GitHub(message.to_owned())),
             };
         };
         let version = tag.trim_start_matches(['v', 'V']).to_owned();
         let (Some(new), Some(old)) = (parse_version(&version), parse_version(current)) else {
-            return Err(format!("Versión con formato inesperado: {tag}."));
+            return Err(Error::GitHub(format!("unexpected version {tag}")));
         };
         let msi = format!("Remapr-{version}-x64.msi");
         let sha256 = format!("{msi}.sha256");
@@ -120,15 +136,15 @@ fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
 
 /// Downloads `release`'s installer into `dir`, calling `progress` with 0..=1, and checks it against
 /// the published SHA-256. A file that doesn't match is deleted, never run.
-pub fn download(release: &Release, dir: &Path, progress: impl Fn(f32)) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("No se pudo preparar la descarga ({e})."))?;
+pub fn download(release: &Release, dir: &Path, progress: impl Fn(f32)) -> Result<PathBuf, Error> {
+    std::fs::create_dir_all(dir).map_err(|e| Error::File(e.to_string()))?;
     let sums = curl(&["-sSfL", "--max-time", "30", &release.sha256_url])?;
     let expected = String::from_utf8_lossy(&sums)
         .split_whitespace()
         .next()
         .map(str::to_ascii_lowercase)
         .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
-        .ok_or("El SHA-256 publicado no se pudo leer.")?;
+        .ok_or(Error::UnreadableChecksum)?;
 
     let msi = dir.join(format!("Remapr-{}-x64.msi", release.version));
     let _ = std::fs::remove_file(&msi);
@@ -137,9 +153,9 @@ pub fn download(release: &Release, dir: &Path, progress: impl Fn(f32)) -> Result
         .arg(&release.msi_url)
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("No se pudo ejecutar curl.exe ({e})."))?;
+        .map_err(|e| Error::Network(e.to_string()))?;
     let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+        if let Some(status) = child.try_wait().map_err(|e| Error::Network(e.to_string()))? {
             break status;
         }
         let got = std::fs::metadata(&msi).map_or(0, |m| m.len());
@@ -150,44 +166,44 @@ pub fn download(release: &Release, dir: &Path, progress: impl Fn(f32)) -> Result
         let mut stderr = String::new();
         let _ = child.stderr.take().map(|mut e| e.read_to_string(&mut stderr));
         let _ = std::fs::remove_file(&msi);
-        return Err(network_error(&stderr));
+        return Err(Error::Network(stderr.trim().to_owned()));
     }
     progress(1.0);
 
-    let bytes = std::fs::read(&msi).map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&msi).map_err(|e| Error::File(e.to_string()))?;
     if sha256(&bytes) != expected {
         let _ = std::fs::remove_file(&msi);
-        return Err("La descarga no coincide con su SHA-256 publicado; se descartó.".into());
+        return Err(Error::ChecksumMismatch);
     }
     Ok(msi)
 }
 
 /// Starts Windows Installer on `msi` with a progress bar and no questions, logging beside the file.
-pub fn install(msi: &Path) -> Result<Child, String> {
+pub fn install(msi: &Path) -> Result<Child, Error> {
     Command::new(system32("msiexec.exe"))
         .arg("/i")
         .arg(msi)
         .args(["/passive", "/norestart", "/l*v"])
         .arg(msi.with_extension("log"))
         .spawn()
-        .map_err(|e| format!("No se pudo iniciar Windows Installer ({e})."))
+        .map_err(|_| Error::Installer(None))
 }
 
-/// What Windows Installer's exit code means for the user.
-pub fn install_result(code: Option<i32>) -> Result<(), String> {
+/// Windows Installer's exit code as a result: success (also "restart needed") or [`Error::Installer`].
+pub fn install_result(code: Option<i32>) -> Result<(), Error> {
     match code {
         Some(0 | 3010 | 1641) => Ok(()),
-        Some(1602) => Err("Se canceló la actualización.".into()),
-        Some(1618) => Err("Hay otra instalación en curso. Espera a que termine y vuelve a intentarlo.".into()),
-        Some(1303 | 1730 | 1925) => Err("Windows no dio permisos de administrador para instalar.".into()),
-        Some(code) => Err(format!("Windows Installer se detuvo con el error {code}.")),
-        None => Err("Windows Installer se interrumpió.".into()),
+        code => Err(Error::Installer(code)),
     }
 }
 
-fn curl(args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = command(args).output().map_err(|e| format!("No se pudo ejecutar curl.exe ({e})."))?;
-    if out.status.success() { Ok(out.stdout) } else { Err(network_error(&String::from_utf8_lossy(&out.stderr))) }
+fn curl(args: &[&str]) -> Result<Vec<u8>, Error> {
+    let out = command(args).output().map_err(|e| Error::Network(e.to_string()))?;
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        Err(Error::Network(String::from_utf8_lossy(&out.stderr).trim().to_owned()))
+    }
 }
 
 fn command(args: &[&str]) -> Command {
@@ -196,11 +212,6 @@ fn command(args: &[&str]) -> Command {
     command.arg("-H").arg(concat!("User-Agent: Remapr/", env!("CARGO_PKG_VERSION"))).args(args);
     command.creation_flags(CREATE_NO_WINDOW);
     command
-}
-
-fn network_error(stderr: &str) -> String {
-    let detail = stderr.trim();
-    if detail.is_empty() { "No se pudo conectar.".into() } else { format!("No se pudo conectar ({detail}).") }
 }
 
 /// The full path: an elevated process must not pick up a same-named program from its working folder.
@@ -251,7 +262,7 @@ mod tests {
     fn installer_codes_read_as_messages() {
         assert!(install_result(Some(0)).is_ok());
         assert!(install_result(Some(3010)).is_ok());
-        assert_eq!(install_result(Some(1602)), Err("Se canceló la actualización.".into()));
+        assert_eq!(install_result(Some(1602)), Err(Error::Installer(Some(1602))));
     }
 
     /// The whole check and download through curl.exe, against files standing in for GitHub.

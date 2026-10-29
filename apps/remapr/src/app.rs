@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, Align, Frame, Layout, Margin, RichText, Sense, ThemePreference, ViewportCommand, vec2};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use remapr_engine::{Chord, Engine, chord_name};
+use remapr_engine::{Chord, Engine};
 use remapr_platform::{SingleInstance, startup};
 use remapr_ui::{
     KeyState, Palette, card, danger_banner, danger_icon_button, icon, icon_button, icon_text, kbd, primary_button,
@@ -13,6 +13,8 @@ use remapr_ui::{
 };
 
 use crate::config::{self, Config, Mapping, Theme};
+use crate::i18n::{tr, trn};
+use crate::keys::{chord_name, chord_text};
 use crate::tray::{self, Command, Tray};
 use crate::updates::{self, Updates};
 
@@ -80,7 +82,7 @@ impl App {
         let mut notice = load_warning.map(|text| Notice { text, undo: None, link: None });
         if config.last_version != updates::VERSION {
             if !config.last_version.is_empty() {
-                let text = format!("Remapr se actualizó a la versión {}.", updates::VERSION);
+                let text = tr!("Remapr was updated to version {version}.", version = updates::VERSION);
                 notice = Some(Notice { text, undo: None, link: Some(remapr_update::release_page(updates::VERSION)) });
             }
             config.last_version = updates::VERSION.into();
@@ -89,7 +91,7 @@ impl App {
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
             Ok(engine) => (Some(engine), None),
-            Err(e) => (None, Some(format!("No se pudo iniciar el motor de teclado: {e}"))),
+            Err(e) => (None, Some(tr!("Couldn't start the keyboard engine: {error}", error = e))),
         };
 
         let (sender, commands) = mpsc::channel();
@@ -141,7 +143,7 @@ impl App {
         self.sync();
         if let Err(e) = self.config.save() {
             self.notice =
-                Some(Notice { text: format!("No se pudo guardar la configuración: {e}"), undo: None, link: None });
+                Some(Notice { text: tr!("Couldn't save the settings: {error}", error = e), undo: None, link: None });
         }
     }
 
@@ -189,21 +191,18 @@ impl App {
             .frame(Frame::new().fill(p.surface).corner_radius(12).inner_margin(20).stroke((1.0, p.border)))
             .show(&ctx, |ui| {
                 ui.set_width(360.0);
-                ui.label(RichText::new("Remapr sigue funcionando").font(semibold(17.0)).color(p.text));
+                ui.label(RichText::new(tr!("Remapr is still running")).font(semibold(17.0)).color(p.text));
                 ui.add_space(2.0);
                 ui.label(
-                    RichText::new(
-                        "Tus teclas siguen reasignadas. Encuéntralo en la bandeja del sistema, junto al reloj: \
-                         desde ahí puedes abrirlo, pausarlo o salir.",
-                    )
+                    RichText::new(tr!("Your keys stay remapped. Find Remapr in the notification area, by the clock: from there you can open it, pause it or quit."))
                     .color(p.muted),
                 );
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if primary_button(ui, None, "Entendido").clicked() {
+                    if primary_button(ui, None, tr!("Got it")).clicked() {
                         choice = Some(false);
                     }
-                    if ui.button("Salir de Remapr").clicked() {
+                    if ui.button(tr!("Quit Remapr")).clicked() {
                         choice = Some(true);
                     }
                 });
@@ -261,13 +260,13 @@ impl App {
     fn add(&mut self, mapping: Mapping) {
         let (from, to) = (chord_text(mapping.source()), chord_text(mapping.target()));
         if mapping.source() == mapping.target() {
-            let text = format!("Elegiste {from} dos veces, así que no se cambió nada.");
+            let text = tr!("You chose {keys} twice, so nothing changed.", keys = from);
             self.notice = Some(Notice { text, undo: None, link: None });
             return;
         }
         if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
             (existing.to, existing.to_mods) = (mapping.to, mapping.to_mods);
-            let text = format!("{from} ya estaba reasignada. Ahora envía {to}.");
+            let text = tr!("{from} was already remapped. It now sends {to}.", from = from, to = to);
             self.notice = Some(Notice { text, undo: None, link: None });
         } else {
             self.config.mappings.push(mapping);
@@ -277,20 +276,25 @@ impl App {
 
     fn remove(&mut self, index: usize) {
         let m = self.config.mappings.remove(index);
-        let text = format!("Se quitó {} → {}.", chord_text(m.source()), chord_text(m.target()));
+        let text = tr!("Removed {from} → {to}.", from = chord_text(m.source()), to = chord_text(m.target()));
         self.notice = Some(Notice { text, undo: Some((index, m)), link: None });
         self.commit();
     }
 
     fn export_mappings(&mut self) {
-        let kind = remapr_platform::FileKind { name: "Mapeos de Remapr", extension: "toml" };
-        let Some(path) = remapr_platform::save_file_dialog(self.hwnd, "Exportar mapeos", "remapr-mapeos.toml", &kind)
+        let kind = remapr_platform::FileKind { name: tr!("Remapr mappings"), extension: "toml" };
+        let Some(path) =
+            remapr_platform::save_file_dialog(self.hwnd, tr!("Export mappings"), tr!("remapr-mappings.toml"), &kind)
         else {
             return;
         };
         let text = match std::fs::write(&path, config::export(&self.config.mappings)) {
-            Ok(()) => format!("Se exportaron {} a {}.", mappings_count(self.config.mappings.len()), path.display()),
-            Err(e) => format!("No se pudo exportar: {e}"),
+            Ok(()) => tr!(
+                "Exported {count} to {file}.",
+                count = trn!("{n} mapping|{n} mappings", self.config.mappings.len()),
+                file = path.display()
+            ),
+            Err(e) => tr!("Couldn't export: {error}", error = e),
         };
         self.notice = Some(Notice { text, undo: None, link: None });
     }
@@ -298,8 +302,8 @@ impl App {
     /// Adds the mappings of an export file; one that fires on the same keys in the same place
     /// replaces the one already here.
     fn import_mappings(&mut self) {
-        let kind = remapr_platform::FileKind { name: "Mapeos de Remapr", extension: "toml" };
-        let Some(path) = remapr_platform::open_file_dialog(self.hwnd, "Importar mapeos", &kind) else { return };
+        let kind = remapr_platform::FileKind { name: tr!("Remapr mappings"), extension: "toml" };
+        let Some(path) = remapr_platform::open_file_dialog(self.hwnd, tr!("Import mappings"), &kind) else { return };
         let imported = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| config::import(&t));
         let text = match imported {
             Ok(mappings) => {
@@ -313,14 +317,18 @@ impl App {
                     }
                 }
                 self.commit();
-                let total = mappings_count(total);
+                let total = trn!("{n} mapping|{n} mappings", total);
                 match replaced {
-                    0 => format!("Se importaron {total}."),
-                    1 => format!("Se importaron {total}; uno reemplazó al que ya tenías con las mismas teclas."),
-                    n => format!("Se importaron {total}; {n} reemplazaron a los que ya tenías con las mismas teclas."),
+                    0 => tr!("Imported {count}.", count = total),
+                    1 => tr!("Imported {count}; one replaced the mapping you had on the same keys.", count = total),
+                    n => tr!(
+                        "Imported {count}; {replaced} replaced the mappings you had on the same keys.",
+                        count = total,
+                        replaced = n
+                    ),
                 }
             }
-            Err(e) => format!("No se pudo importar: {e}"),
+            Err(e) => tr!("Couldn't import: {error}", error = e),
         };
         self.notice = Some(Notice { text, undo: None, link: None });
     }
@@ -359,20 +367,20 @@ impl App {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.heading("Remapr");
-                ui.label(RichText::new("Reasigna cualquier tecla de tu teclado").color(p.muted));
+                ui.label(RichText::new(tr!("Remap any key on your keyboard")).color(p.muted));
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let mut enabled = self.config.enabled;
-                if switch(ui, &mut enabled, "Remapeo activo").changed() {
+                if switch(ui, &mut enabled, tr!("Remapping on")).changed() {
                     self.config.enabled = enabled;
                     self.commit();
                 }
-                ui.label(RichText::new(if enabled { "Activo" } else { "En pausa" }).color(p.muted));
+                ui.label(RichText::new(if enabled { tr!("On") } else { tr!("Paused") }).color(p.muted));
                 ui.add_space(4.0);
                 let (glyph, label, next) = match self.config.theme {
-                    Theme::System => (icon::SYSTEM, "Tema: igual que Windows", Theme::Light),
-                    Theme::Light => (icon::SUN, "Tema: claro", Theme::Dark),
-                    Theme::Dark => (icon::MOON, "Tema: oscuro", Theme::System),
+                    Theme::System => (icon::SYSTEM, tr!("Theme: same as Windows"), Theme::Light),
+                    Theme::Light => (icon::SUN, tr!("Theme: light"), Theme::Dark),
+                    Theme::Dark => (icon::MOON, tr!("Theme: dark"), Theme::System),
                 };
                 if icon_button(ui, glyph, label).clicked() {
                     self.config.theme = next;
@@ -380,13 +388,13 @@ impl App {
                     self.commit();
                 }
                 let mut action = None;
-                let more = icon_button(ui, icon::MORE, "Más opciones");
+                let more = icon_button(ui, icon::MORE, tr!("More options"));
                 egui::Popup::menu(&more).show(|ui| {
                     let has_mappings = !self.config.mappings.is_empty();
-                    if ui.add_enabled(has_mappings, egui::Button::new("Exportar mapeos…")).clicked() {
+                    if ui.add_enabled(has_mappings, egui::Button::new(tr!("Export mappings…"))).clicked() {
                         action = Some(true);
                     }
-                    if ui.button("Importar mapeos…").clicked() {
+                    if ui.button(tr!("Import mappings…")).clicked() {
                         action = Some(false);
                     }
                     if action.is_some() {
@@ -405,9 +413,9 @@ impl App {
     fn footer(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
         let (color, status) = match (&self.engine, self.config.enabled) {
-            (None, _) => (p.danger, "Motor detenido"),
-            (Some(_), true) => (p.success, "Motor activo"),
-            (Some(_), false) => (p.muted, "En pausa: tus teclas funcionan como siempre"),
+            (None, _) => (p.danger, tr!("Engine stopped")),
+            (Some(_), true) => (p.success, tr!("Engine running")),
+            (Some(_), false) => (p.muted, tr!("Paused: your keys work as usual")),
         };
         ui.horizontal(|ui| {
             let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
@@ -415,8 +423,7 @@ impl App {
             ui.label(RichText::new(status).small().color(p.muted));
             if !self.elevated {
                 ui.label(icon_text(icon::WARNING, 13.0).color(p.muted)).on_hover_text(
-                    "Remapr corre sin permisos de administrador: no reasigna teclas dentro de ventanas \
-                     que sí los tienen (Administrador de tareas, instaladores). Instalado, inicia con ellos.",
+                    tr!("Remapr runs without administrator rights: it doesn't remap keys inside windows that have them (Task Manager, installers). Installed, it starts with them."),
                 );
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -425,11 +432,11 @@ impl App {
                 if let Some(mut on) = self.starts_at_sign_in {
                     ui.add_space(8.0);
                     let toggled = ui
-                        .add_enabled_ui(self.elevated, |ui| switch(ui, &mut on, "Iniciar con Windows"))
+                        .add_enabled_ui(self.elevated, |ui| switch(ui, &mut on, tr!("Start with Windows")))
                         .inner
-                        .on_disabled_hover_text("Abre Remapr como administrador para cambiar esto.")
+                        .on_disabled_hover_text(tr!("Open Remapr as administrator to change this."))
                         .changed();
-                    ui.label(RichText::new("Iniciar con Windows").small().color(p.muted));
+                    ui.label(RichText::new(tr!("Start with Windows")).small().color(p.muted));
                     if toggled {
                         self.set_starts_at_sign_in(on);
                     }
@@ -442,7 +449,7 @@ impl App {
         match std::env::current_exe().and_then(|exe| startup::register(&exe, on)) {
             Ok(()) => self.starts_at_sign_in = Some(on),
             Err(e) => {
-                let text = format!("No se pudo cambiar el inicio con Windows: {e}");
+                let text = tr!("Couldn't change starting with Windows: {error}", error = e);
                 self.notice = Some(Notice { text, undo: None, link: None });
             }
         }
@@ -464,11 +471,11 @@ impl App {
         }
 
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Teclas reasignadas").font(semibold(16.0)).color(p.text));
+            ui.label(RichText::new(tr!("Remapped keys")).font(semibold(16.0)).color(p.text));
             ui.label(RichText::new(self.config.mappings.len().to_string()).color(p.muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let can_add = !capturing && self.engine.is_some();
-                if ui.add_enabled_ui(can_add, |ui| primary_button(ui, Some(icon::ADD), "Agregar")).inner.clicked() {
+                if ui.add_enabled_ui(can_add, |ui| primary_button(ui, Some(icon::ADD), tr!("Add"))).inner.clicked() {
                     self.start_capture();
                 }
             });
@@ -492,7 +499,7 @@ impl App {
                         ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
                         chord_caps(ui, m.target(), KeyState::Idle);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if danger_icon_button(ui, icon::DELETE, "Quitar este mapeo").clicked() {
+                            if danger_icon_button(ui, icon::DELETE, tr!("Remove this mapping")).clicked() {
                                 remove = Some(i);
                             }
                             if let Some(app) = app_picker(ui, m.app.as_deref()) {
@@ -527,19 +534,16 @@ impl App {
                     }
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    cancel = ui.button("Cancelar").clicked();
+                    cancel = ui.button(tr!("Cancel")).clicked();
                 });
             });
             let step = match self.capture {
-                Capture::To(_) => "Ahora presiona la tecla o combinación que debe enviar en su lugar.",
-                _ => "Presiona la tecla o combinación que quieres cambiar.",
+                Capture::To(_) => tr!("Now press the key or shortcut it should send instead."),
+                _ => tr!("Press the key or shortcut you want to change."),
             };
             ui.label(RichText::new(step).font(semibold(14.0)).color(p.text));
             ui.label(
-                RichText::new(
-                    "Para una combinación, mantén Ctrl, Shift, Alt o Win y presiona la tecla. Mientras tanto, \
-                     el teclado no escribe en otras apps.",
-                )
+                RichText::new(tr!("For a shortcut, hold Ctrl, Shift, Alt or Win and press the key. Meanwhile, the keyboard doesn't type into other apps."))
                 .small()
                 .color(p.muted),
             );
@@ -556,15 +560,15 @@ impl App {
         ui.vertical_centered(|ui| {
             ui.label(icon_text(icon::KEYBOARD, 44.0).color(p.muted));
             ui.add_space(8.0);
-            ui.label(RichText::new("Todavía no reasignaste ninguna tecla").font(semibold(17.0)).color(p.text));
+            ui.label(RichText::new(tr!("No keys remapped yet")).font(semibold(17.0)).color(p.text));
             ui.label(
-                RichText::new("Por ejemplo, convierte Bloq Mayús en Esc. Presiona el botón y luego las dos teclas.")
+                RichText::new(tr!("For example, turn Caps Lock into Esc. Press the button, then the two keys."))
                     .color(p.muted),
             );
             ui.add_space(12.0);
             if ui
                 .add_enabled_ui(self.engine.is_some(), |ui| {
-                    primary_button(ui, Some(icon::ADD), "Agregar mi primer mapeo")
+                    primary_button(ui, Some(icon::ADD), tr!("Add my first mapping"))
                 })
                 .inner
                 .clicked()
@@ -583,11 +587,11 @@ impl App {
             ui.horizontal(|ui| {
                 ui.add(egui::Label::new(RichText::new(&notice.text).color(p.text)).wrap());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    close = icon_button(ui, icon::CLOSE, "Cerrar aviso").clicked();
-                    if notice.undo.is_some() && ui.button("Deshacer").clicked() {
+                    close = icon_button(ui, icon::CLOSE, tr!("Close notice")).clicked();
+                    if notice.undo.is_some() && ui.button(tr!("Undo")).clicked() {
                         undo = notice.undo.clone();
                     }
-                    if notice.link.is_some() && ui.button("Novedades").clicked() {
+                    if notice.link.is_some() && ui.button(tr!("What's new")).clicked() {
                         open = notice.link.clone();
                     }
                 });
@@ -655,11 +659,6 @@ fn update_source(installed: bool) -> Option<remapr_update::Source> {
     Some(remapr_update::Source::local(std::path::Path::new(&dir)))
 }
 
-/// `Ctrl + Shift + T`, for messages.
-fn chord_text(chord: Chord) -> String {
-    chord_name(chord).join(" + ")
-}
-
 /// A chord as keycaps joined by small plus signs.
 fn chord_caps(ui: &mut egui::Ui, chord: Chord, state: KeyState) {
     let muted = Palette::of(ui).muted;
@@ -677,15 +676,15 @@ fn chord_caps(ui: &mut egui::Ui, chord: Chord, state: KeyState) {
 /// Returns the new choice when the user makes one.
 fn app_picker(ui: &mut egui::Ui, current: Option<&str>) -> Option<Option<String>> {
     let p = Palette::of(ui);
-    let label = current.map_or("Todas las apps".to_owned(), |exe| format!("Solo en {exe}"));
+    let label = current.map_or(tr!("All apps").to_owned(), |exe| tr!("Only in {app}", app = exe));
     let mut picked = None;
     ui.menu_button(RichText::new(label).small().color(if current.is_some() { p.accent } else { p.muted }), |ui| {
         ui.set_max_width(320.0);
-        if ui.selectable_label(current.is_none(), "Todas las apps").clicked() {
+        if ui.selectable_label(current.is_none(), tr!("All apps")).clicked() {
             picked = Some(None);
         }
         ui.separator();
-        ui.label(RichText::new("Solo mientras esta app está al frente:").small().color(p.muted));
+        ui.label(RichText::new(tr!("Only while this app is in front:")).small().color(p.muted));
         let apps = remapr_platform::running_apps();
         // Keep the current app listed even when it isn't open right now.
         let missing = current.filter(|exe| apps.iter().all(|a| a.exe != *exe));
@@ -714,9 +713,4 @@ fn truncate(text: &str, max: usize) -> String {
         Some((cut, _)) => format!("{}…", &text[..cut]),
         None => text.to_owned(),
     }
-}
-
-/// "1 mapeo", "3 mapeos".
-fn mappings_count(n: usize) -> String {
-    if n == 1 { "1 mapeo".into() } else { format!("{n} mapeos") }
 }

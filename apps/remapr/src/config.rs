@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use remapr_engine::{Chord, Mods, Rule, Vk};
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::tr;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -96,14 +98,14 @@ impl Config {
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return (Self::default(), None),
-            Err(e) => return (Self::default(), Some(format!("No se pudo leer la configuración: {e}"))),
+            Err(e) => return (Self::default(), Some(tr!("Couldn't read the settings: {error}", error = e))),
         };
         match toml::from_str(&text) {
             Ok(config) => (config, None),
             Err(_) => {
                 let bad = path.with_extension("toml.bad");
                 let _ = std::fs::rename(&path, &bad);
-                let msg = format!("La configuración estaba dañada. Se guardó una copia en {}", bad.display());
+                let msg = tr!("The settings were damaged. A copy was saved as {file}", file = bad.display());
                 (Self::default(), Some(msg))
             }
         }
@@ -131,7 +133,7 @@ struct Exported {
 /// Mappings as an export file's text.
 pub fn export(mappings: &[Mapping]) -> String {
     let body = toml::to_string_pretty(&Exported { mappings: mappings.to_vec() }).unwrap_or_default();
-    format!("# Remapr: mapeos exportados. Impórtalos desde el menú ⋯ de Remapr.\n\n{body}")
+    format!("# {}\n\n{body}", tr!("Remapr: exported mappings. Import them from Remapr's ⋯ menu."))
 }
 
 /// The usable mappings in an export file someone hands us. Rows that make no sense (no key, the
@@ -140,10 +142,9 @@ pub fn import(text: &str) -> Result<Vec<Mapping>, String> {
     const MAX_BYTES: usize = 1 << 20;
     const MAX_MAPPINGS: usize = 1000;
     if text.len() > MAX_BYTES {
-        return Err("El archivo es demasiado grande para ser una exportación de Remapr.".into());
+        return Err(tr!("The file is too big to be a Remapr export.").into());
     }
-    let exported: Exported =
-        toml::from_str(text).map_err(|_| "El archivo no es una exportación de Remapr.".to_owned())?;
+    let exported: Exported = toml::from_str(text).map_err(|_| tr!("The file isn't a Remapr export.").to_owned())?;
     let valid_app =
         |app: &str| app.len() <= 260 && app.to_ascii_lowercase().ends_with(".exe") && !app.contains(['\\', '/', ':']);
     let mappings: Vec<Mapping> = exported
@@ -153,7 +154,7 @@ pub fn import(text: &str) -> Result<Vec<Mapping>, String> {
         .filter(|m| m.from_mods < 16 && m.to_mods < 16 && m.app.as_deref().is_none_or(valid_app))
         .take(MAX_MAPPINGS)
         .collect();
-    if mappings.is_empty() { Err("El archivo no tiene mapeos que se puedan usar.".into()) } else { Ok(mappings) }
+    if mappings.is_empty() { Err(tr!("The file has no usable mappings.").into()) } else { Ok(mappings) }
 }
 
 #[cfg(test)]

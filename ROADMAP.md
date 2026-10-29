@@ -51,8 +51,18 @@ used on a real keyboard.
 - Overlaps resolved, not warned about: the same keys in the same place replace the old mapping
   (with a notice); one app's mappings win over global ones, and shortcuts over single keys.
 
-## Phase 6: Polish
+## Phase 6: Polish (done)
 
-- English and Spanish UI.
-- Code signing, so SmartScreen does not warn on first install.
+- English and Spanish UI, following Windows' display language; translations are catalogs as in
+  ArtCraft's craft-i18n, so another language is one file.
 - Import and export of mappings.
+- "Buscar actualizaciones" button in the footer.
+- The title bar keeps the app's theme after Windows settings changes; the window icon stays sharp
+  across monitors with different DPI.
+- Debug builds run beside the installed app, with their own settings.
+
+## Later
+
+- Code signing, so SmartScreen does not warn on first install (needs a certificate).
+- The installer in English too (it is Spanish only).
+- A language picker, if following Windows isn't enough for someone.

@@ -9,6 +9,8 @@ mod elevation;
 #[allow(unsafe_code)]
 mod instance;
 #[allow(unsafe_code)]
+mod language;
+#[allow(unsafe_code)]
 mod process;
 #[allow(unsafe_code)]
 mod raw_input;
@@ -22,6 +24,7 @@ pub use browser::open_in_browser;
 pub use dialogs::{FileKind, open_file_dialog, save_file_dialog};
 pub use elevation::is_elevated;
 pub use instance::SingleInstance;
+pub use language::preferred_languages;
 pub use process::{RunningApp, exe_name, running_apps};
 pub use raw_input::stop_raw_keyboard_input;
 pub use registry::install_dir;

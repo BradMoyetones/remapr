@@ -8,11 +8,9 @@
 
 #[allow(unsafe_code)]
 mod hook;
-mod keys;
 mod remap;
 
-pub use hook::Engine;
-pub use keys::{chord_name, key_name};
+pub use hook::{Engine, layout_char};
 
 /// A virtual-key code.
 pub type Vk = u8;

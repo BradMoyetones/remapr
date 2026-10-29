@@ -318,7 +318,7 @@ fn keyboard_input(vk: Vk, up: bool) -> INPUT {
 }
 
 /// The character `vk` types on the current keyboard layout (`Ñ` for `VK_OEM_3` on Spanish).
-pub(crate) fn layout_char(vk: Vk) -> Option<char> {
+pub fn layout_char(vk: Vk) -> Option<char> {
     // SAFETY: a pure lookup with no pointers.
     let c = unsafe { MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_CHAR) } & 0xFFFF;
     char::from_u32(c).filter(|c| !c.is_control())
