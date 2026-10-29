@@ -1,11 +1,12 @@
 //! The "new version" banner: checks for releases in the background, then downloads, verifies and
 //! installs one when the user asks. The installer ends this Remapr and starts the new one.
 
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use eframe::egui::{self, Align, Layout, RichText};
-use remapr_ui::{Palette, card, icon, icon_text, primary_button, semibold};
+use remapr_ui::{Palette, card, icon, icon_button, icon_text, primary_button, semibold};
 use remapr_update::{Release, Source};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -14,6 +15,9 @@ const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
 enum Event {
     Found(Release),
+    /// A check the user asked for found nothing newer.
+    UpToDate,
+    CheckFailed(String),
     Progress(f32),
     Installing,
     /// The installer runs elevated and can't be stopped by a UAC prompt: quit so it needn't force us.
@@ -38,6 +42,11 @@ enum Action {
 
 pub struct Updates {
     state: State,
+    source: Option<Arc<Source>>,
+    /// A check the user asked for is under way.
+    checking: bool,
+    /// What that check found, when it wasn't a new version.
+    message: Option<String>,
     /// "Más tarde" on this version: not offered again until Remapr restarts.
     dismissed: Option<String>,
     events: Receiver<Event>,
@@ -50,7 +59,8 @@ impl Updates {
     /// pointed at a test folder.
     pub fn new(ctx: &egui::Context, source: Option<Source>, elevated: bool) -> Self {
         let (sender, events) = mpsc::channel();
-        if let Some(source) = source {
+        let source = source.map(Arc::new);
+        if let Some(source) = source.clone() {
             let (sender, ctx) = (sender.clone(), ctx.clone());
             let _ = std::thread::Builder::new().name("remapr-updates".into()).spawn(move || {
                 std::thread::sleep(Duration::from_secs(5));
@@ -64,13 +74,56 @@ impl Updates {
                 }
             });
         }
-        Self { state: State::Idle, dismissed: None, events, sender, elevated }
+        Self { state: State::Idle, source, checking: false, message: None, dismissed: None, events, sender, elevated }
+    }
+
+    /// The footer's "Buscar actualizaciones" button, for the copies that update at all.
+    pub fn check_button(&mut self, ui: &mut egui::Ui) {
+        if self.source.is_none() {
+            return;
+        }
+        if self.checking {
+            ui.add(egui::Spinner::new().size(14.0));
+        } else if icon_button(ui, icon::REFRESH, "Buscar actualizaciones").clicked() {
+            self.check_now(ui.ctx());
+        }
+    }
+
+    fn check_now(&mut self, ctx: &egui::Context) {
+        let Some(source) = self.source.clone() else { return };
+        if !matches!(self.state, State::Idle | State::Available(_) | State::Failed(..)) {
+            return;
+        }
+        // Asked for: offer what it finds even if "Más tarde" set it aside.
+        (self.checking, self.message, self.dismissed) = (true, None, None);
+        let (sender, ctx) = (self.sender.clone(), ctx.clone());
+        let _ = std::thread::Builder::new().name("remapr-update-check".into()).spawn(move || {
+            let event = match source.check(VERSION) {
+                Ok(Some(release)) => Event::Found(release),
+                Ok(None) => Event::UpToDate,
+                Err(e) => Event::CheckFailed(e),
+            };
+            let _ = sender.send(event);
+            ctx.request_repaint();
+        });
     }
 
     /// Takes in what the background threads report. `true` when Remapr must quit for the installer.
     pub fn poll(&mut self) -> bool {
         let mut quit = false;
         while let Ok(event) = self.events.try_recv() {
+            match &event {
+                Event::Found(_) => self.checking = false,
+                Event::UpToDate => {
+                    self.checking = false;
+                    self.message = Some(format!("Ya tienes la última versión (v{VERSION})."));
+                }
+                Event::CheckFailed(e) => {
+                    self.checking = false;
+                    self.message = Some(format!("No se pudo buscar actualizaciones. {e}"));
+                }
+                _ => {}
+            }
             let state = std::mem::replace(&mut self.state, State::Idle);
             self.state = match (state, event) {
                 (State::Idle | State::Available(_), Event::Found(r)) if self.dismissed.as_ref() != Some(&r.version) => {
@@ -119,7 +172,20 @@ impl Updates {
         let p = Palette::of(ui);
         let mut action = None;
         match &self.state {
-            State::Idle => return,
+            State::Idle => {
+                let Some(message) = &self.message else { return };
+                card(ui, false, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(RichText::new(message).color(p.text)).wrap());
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if icon_button(ui, icon::CLOSE, "Cerrar aviso").clicked() {
+                                action = Some(Action::Close);
+                            }
+                        });
+                    });
+                });
+            }
             State::Available(release) => {
                 card(ui, true, |ui| {
                     ui.set_width(ui.available_width());
@@ -206,7 +272,7 @@ impl Updates {
                     self.dismissed = Some(release.version);
                 }
             }
-            Some(Action::Close) => self.state = State::Idle,
+            Some(Action::Close) => (self.state, self.message) = (State::Idle, None),
             None => {}
         }
     }

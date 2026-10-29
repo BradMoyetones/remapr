@@ -22,8 +22,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWi
 
 use crate::wide;
 
-const MUTEX: &str = "Local\\Remapr.Instance";
-const SHOW_EVENT: &str = "Local\\Remapr.Show";
+// Debug builds are their own app, so `cargo run` works beside an installed Remapr.
+const MUTEX: &str = if cfg!(debug_assertions) { "Local\\RemaprDev.Instance" } else { "Local\\Remapr.Instance" };
+const SHOW_EVENT: &str = if cfg!(debug_assertions) { "Local\\RemaprDev.Show" } else { "Local\\Remapr.Show" };
 /// Everyone may use the objects, and processes of any integrity level may signal them.
 const SDDL: &str = "D:(A;;GA;;;WD)S:(ML;;NW;;;LW)";
 

@@ -62,8 +62,9 @@ cargo run
 ```
 
 Debug builds keep a console window attached so `println!` and panics are visible. Release builds
-have no console. Only one Remapr runs at a time: if `cargo run` seems to do nothing, an earlier
-copy is still in the tray; quit it from the tray menu.
+have no console. Debug builds are a separate app: their own settings (`%APPDATA%\Remapr-dev`) and
+their own single instance, so they run beside an installed Remapr without touching it. If
+`cargo run` seems to do nothing, an earlier debug copy is still in the tray; quit it from there.
 
 Run the tests, lints and formatter, the same checks CI runs:
 

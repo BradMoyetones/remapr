@@ -82,6 +82,7 @@ pub mod icon {
     pub const WARNING: char = '\u{E7BA}';
     pub const UNDO: char = '\u{E7A7}';
     pub const DOWNLOAD: char = '\u{E896}';
+    pub const REFRESH: char = '\u{E72C}';
 }
 
 pub(crate) const SEMIBOLD: &str = "semibold";

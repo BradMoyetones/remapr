@@ -116,7 +116,8 @@ impl App {
             hwnd,
             start_hidden: background,
             elevated,
-            starts_at_sign_in: startup::starts_at_sign_in(),
+            // Only the installed copy may touch the task: a dev build would point it at itself.
+            starts_at_sign_in: installed.then(startup::starts_at_sign_in).flatten(),
             updates: Updates::new(&cc.egui_ctx, update_source(installed), elevated),
         };
         app.apply_theme(&cc.egui_ctx);
@@ -356,6 +357,7 @@ impl App {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(RichText::new(concat!("v", env!("CARGO_PKG_VERSION"))).small().color(p.muted));
+                self.updates.check_button(ui);
                 if let Some(mut on) = self.starts_at_sign_in {
                     ui.add_space(8.0);
                     let toggled = ui

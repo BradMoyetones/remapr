@@ -83,7 +83,9 @@ pub enum Theme {
 
 fn path() -> PathBuf {
     let appdata = std::env::var_os("APPDATA").map_or_else(std::env::temp_dir, PathBuf::from);
-    appdata.join("Remapr").join("config.toml")
+    // Debug builds keep their own settings, so trying things never touches the installed copy's.
+    let folder = if cfg!(debug_assertions) { "Remapr-dev" } else { "Remapr" };
+    appdata.join(folder).join("config.toml")
 }
 
 impl Config {
