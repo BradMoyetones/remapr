@@ -6,7 +6,7 @@ use std::ptr::null_mut;
 
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
 
-use crate::wide;
+use super::wide;
 
 /// The folder the MSI installed Remapr into (`HKLM\Software\Remapr\InstallDir`), if it did.
 pub fn install_dir() -> Option<PathBuf> {

@@ -10,6 +10,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOOLWINDOW,
 };
 
+use crate::RunningApp;
+
 /// The file name of the program that owns `hwnd`, lowercase (`chrome.exe`). `None` when Windows won't
 /// say: a program running as administrator, while Remapr isn't.
 pub fn exe_name(hwnd: isize) -> Option<String> {
@@ -34,15 +36,6 @@ pub fn exe_name(hwnd: isize) -> Option<String> {
         let path = String::from_utf16_lossy(&buf[..len as usize]);
         path.rsplit('\\').next().map(str::to_lowercase)
     }
-}
-
-/// A program with a window open, as the app picker lists it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RunningApp {
-    /// Lowercase file name, what a rule stores: `chrome.exe`.
-    pub exe: String,
-    /// The title of one of its windows, to help recognise it.
-    pub title: String,
 }
 
 /// Hosts of other apps (Store apps run inside it), not something a user would pick.

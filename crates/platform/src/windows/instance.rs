@@ -20,7 +20,7 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
 
-use crate::wide;
+use super::wide;
 
 // Debug builds are their own app, so `cargo run` works beside an installed Remapr.
 const MUTEX: &str = if cfg!(debug_assertions) { "Local\\RemaprDev.Instance" } else { "Local\\Remapr.Instance" };

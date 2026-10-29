@@ -1,37 +1,44 @@
-//! Remapr's integration with Windows itself, kept apart from the keyboard engine.
-//! Each module is a thin wrapper over a few Win32 calls (or, for `startup`, over schtasks.exe).
+//! Remapr's integration with the operating system, kept apart from the keyboard engine.
+//!
+//! One facade, one module per system behind it: every function and type below exists on every
+//! system, so the app builds anywhere without `#[cfg]`s of its own, and CI on each system catches
+//! one that falls behind. `windows` wraps a few Win32 calls; `unix` serves macOS and Linux for now.
 
-mod browser;
-#[allow(unsafe_code)]
-mod dialogs;
-#[allow(unsafe_code)]
-mod elevation;
-#[allow(unsafe_code)]
-mod instance;
-#[allow(unsafe_code)]
-mod language;
-#[allow(unsafe_code)]
-mod process;
-#[allow(unsafe_code)]
-mod raw_input;
-#[allow(unsafe_code)]
-mod registry;
-pub mod startup;
-#[allow(unsafe_code)]
-mod window;
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
 
-pub use browser::open_in_browser;
-pub use dialogs::{FileKind, open_file_dialog, save_file_dialog};
-pub use elevation::is_elevated;
-pub use instance::SingleInstance;
-pub use language::preferred_languages;
-pub use process::{RunningApp, exe_name, running_apps};
-pub use raw_input::stop_raw_keyboard_input;
-pub use registry::install_dir;
-pub use window::{
-    hide_first_show, is_foreground, keep_title_bar_theme, repaint_title_bar_when_shown, small_icon_size, use_exe_icon,
+#[cfg(unix)]
+use unix as os;
+#[cfg(windows)]
+use windows as os;
+
+pub use os::{
+    SingleInstance, config_dir, exe_name, hide_first_show, install_dir, is_elevated, is_foreground,
+    keep_title_bar_theme, open_file_dialog, open_in_browser, preferred_languages, repaint_title_bar_when_shown,
+    running_apps, save_file_dialog, small_icon_size, stop_raw_keyboard_input, use_exe_icon,
 };
 
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain([0]).collect()
+/// Starting Remapr when the user signs in.
+pub mod startup {
+    /// Remapr started with this argument starts hidden in the tray.
+    pub const BACKGROUND_ARG: &str = "--background";
+
+    pub use crate::os::startup::{register, run, starts_at_sign_in, unregister};
+}
+
+/// What the file dialogs offer: files ending in `.{extension}`, described as `name`.
+pub struct FileKind<'a> {
+    pub name: &'a str,
+    pub extension: &'a str,
+}
+
+/// A program with a window open, as the app picker lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunningApp {
+    /// Lowercase file name, what a rule stores: `chrome.exe`.
+    pub exe: String,
+    /// The title of one of its windows, to help recognise it.
+    pub title: String,
 }

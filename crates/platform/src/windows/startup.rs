@@ -12,9 +12,9 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::startup::BACKGROUND_ARG;
+
 const TASK: &str = "Remapr";
-/// The task passes this to Remapr, which then starts hidden in the tray.
-pub const BACKGROUND_ARG: &str = "--background";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Creates or replaces the task. Needs administrator rights.

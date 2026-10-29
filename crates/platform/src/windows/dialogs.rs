@@ -8,11 +8,7 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
     OFN_PATHMUSTEXIST, OPENFILENAMEW,
 };
 
-/// What the dialogs offer: files ending in `.{extension}`, described as `name`.
-pub struct FileKind<'a> {
-    pub name: &'a str,
-    pub extension: &'a str,
-}
+use crate::FileKind;
 
 /// Asks where to save, suggesting `file_name`; asks before replacing a file. `None` if cancelled.
 pub fn save_file_dialog(owner: Option<isize>, title: &str, file_name: &str, kind: &FileKind) -> Option<PathBuf> {
@@ -39,7 +35,7 @@ fn run(
     for (slot, c) in file.iter_mut().zip(file_name.encode_utf16().take(1023)) {
         *slot = c;
     }
-    let (title, extension) = (crate::wide(title), crate::wide(kind.extension));
+    let (title, extension) = (super::wide(title), super::wide(kind.extension));
     let mut dialog = OPENFILENAMEW {
         lStructSize: size_of::<OPENFILENAMEW>() as u32,
         hwndOwner: owner.map_or(null_mut(), |h| h as _),
