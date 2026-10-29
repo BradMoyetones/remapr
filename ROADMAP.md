@@ -61,9 +61,10 @@ used on a real keyboard.
   across monitors with different DPI.
 - Debug builds run beside the installed app, with their own settings.
 
-## Phase 7: Builds everywhere
+## Phase 7: Builds and looks the same everywhere
 
-The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No new features.
+The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No new remapping
+features.
 
 - The workspace builds, lints and tests on Windows, macOS and Linux. CI runs on all three; the
   installer is still built on Windows.
@@ -72,7 +73,15 @@ The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No
   display language) and report the rest as unsupported.
 - The keyboard hook and the tray icon stay Windows-only. On macOS and Linux the window opens and
   says that remapping isn't available on that system yet.
-- Windows behaves exactly as in 0.4.
+- One look on every system:
+  - Inter, the logo's typeface, and Lucide icons, embedded.
+  - A full palette: info, success, warning and danger, controls, and a scrim for modals. A test
+    checks its contrast.
+- A title bar fit to each system, as ArtCraft's apps do. On Windows the native frame takes the
+  app's colours. On macOS the header runs under a transparent title bar, beside the window
+  buttons, and dragging it moves the window.
+- Snapshots of the design system in both themes, drawn by CI for review.
+- Remapping on Windows behaves exactly as in 0.4.
 
 ## Phase 8: Universal keys
 
@@ -104,8 +113,7 @@ The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No
   when they are granted. A notice explains when Secure Input (password fields) pauses remapping.
 - Menu bar icon, one instance at a time, native file dialogs (import and export), start at login,
   and the display language from the system rather than the terminal's variables.
-- Remapr's own icon set replaces Segoe Fluent Icons; fonts look native; texts no longer name
-  Windows where they mean the system.
+- Texts no longer name Windows where they mean the system.
 - `cargo xtask dist` builds `Remapr.app` and a DMG. The updater offers new versions and opens
   their page.
 

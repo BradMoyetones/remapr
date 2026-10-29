@@ -28,7 +28,7 @@ beyond a single small process.
   UAC prompt at every sign-in. Can be turned off from the app.
 - Updates itself: when a new release is out, a banner offers it; one click downloads it, checks
   its SHA-256, installs it and restarts Remapr.
-- Light, dark, or follow Windows, including the native title bar.
+- Light, dark, or follow the system. On Windows the native title bar takes Remapr's colours.
 - In English or Spanish, following Windows' display language.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
@@ -91,6 +91,18 @@ cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D war
 ```
 
 That build goes without the app icons (embedding them needs `rc.exe`, so a Windows host).
+
+### Design snapshots
+
+The design system's widgets, light and dark, are drawn to pictures by a test:
+
+```sh
+UPDATE_SNAPSHOTS=1 cargo test -p remapr-ui --features snapshots --test gallery
+```
+
+They land in `crates/ui/tests/snapshots/`. Drawing uses wgpu, so it needs a GPU with Metal 3,
+DirectX 12 or Vulkan; CI draws them on every push and keeps them as the run's `design-snapshots`
+artifact.
 
 ### Remapping inside admin windows
 
@@ -181,8 +193,9 @@ Apps depend on crates, never the other way around. Each crate has one job:
   far, and what a system can't do yet reports itself unsupported. Together with the engine's hook
   module, it is the only place with `unsafe` code.
 - **ui** knows nothing about keys. Screens take every colour from `Palette` and every font from
-  the theme, so light and dark mode stay consistent. It uses the fonts already on Windows
-  (Segoe UI and Segoe Fluent Icons), which adds nothing to the binary.
+  the theme, so light and dark mode stay consistent, and a test checks the palette's contrast. It
+  embeds Inter, the logo's typeface (cut down to about 60 KB a weight), and Lucide icons as SVG,
+  so Remapr looks the same on every system.
 - **apps/remapr** wires them together and owns the settings file and the tray icon.
 
 ## How it works
@@ -198,3 +211,6 @@ from a WinEvent hook): no locks, allocation or I/O, which keeps added latency in
 
 [MIT](LICENSE). You can use, modify and redistribute Remapr, including commercially, as long as
 you keep the copyright notice and credit Brad Moyetones as the original author.
+
+The Inter typeface, the Lucide icons and code adapted from ArtCraft keep their own licences: see
+[ATTRIBUTION.md](ATTRIBUTION.md).
