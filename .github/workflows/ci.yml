@@ -7,19 +7,29 @@ on:
 
 jobs:
   check:
-    runs-on: windows-latest
+    name: check (${{ matrix.os }})
+    strategy:
+      # One system failing shouldn't hide how the others fare.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all --check
+      # Formatting is the same everywhere: once is enough.
+      - if: runner.os == 'Linux'
+        run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - name: Build the installer
+        if: runner.os == 'Windows'
         run: cargo xtask dist
-      - uses: actions/upload-artifact@v4
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
         with:
           name: remapr-installer
           path: target/dist/
