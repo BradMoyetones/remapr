@@ -32,7 +32,8 @@ beyond a single small process.
 - In English or Spanish, following Windows' display language.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
-See [ROADMAP.md](ROADMAP.md) for what comes next (shortcuts, per-app rules).
+See [ROADMAP.md](ROADMAP.md) for the phases and [docs/VISION.md](docs/VISION.md) for where Remapr is
+going: macOS, Linux, mouse, macros and controllers.
 
 ## Installing
 
@@ -74,6 +75,22 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
+
+### On macOS and Linux
+
+The workspace builds, lints and tests on macOS and Linux too, and CI runs on all three. There the
+window opens and says remapping isn't available yet: the keyboard engine, the tray icon and the
+installer are Windows-only until Phases 10 (macOS) and 11 (Linux). Settings go to
+`~/Library/Application Support/Remapr-dev` on macOS and `~/.config/Remapr-dev` on Linux.
+
+From either, you can check the Windows code before pushing:
+
+```sh
+rustup target add x86_64-pc-windows-msvc
+cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+```
+
+That build goes without the app icons (embedding them needs `rc.exe`, so a Windows host).
 
 ### Remapping inside admin windows
 
@@ -142,9 +159,10 @@ remapr/
 ├── apps/
 │   └── remapr/          The executable: main window, capture flow, tray icon, settings file
 ├── assets/              Logo (SVG, light and dark) and the generated app icons
+├── docs/                Vision and research
 ├── crates/
 │   ├── engine/          Global keyboard hook and key injection
-│   ├── platform/        Windows integration: single instance, elevation, sign-in task, window
+│   ├── platform/        OS integration: settings folder, single instance, elevation, sign-in task
 │   ├── ui/              Design system: light/dark tokens, fonts, Kbd, buttons, switch, cards
 │   └── update/          Release check, download, SHA-256 check and install (GitHub Releases)
 ├── packaging/windows/   The installer (WiX)
@@ -158,8 +176,10 @@ Apps depend on crates, never the other way around. Each crate has one job:
   high-priority thread, swaps keys and shortcuts through `SendInput`, and exposes a small API
   (`set_rules`, `set_enabled`, `start_capture`). The decision for each key event is plain Rust in `remap.rs`,
   unit-tested without Windows.
-- **platform** wraps the few Win32 calls the app needs outside the engine. Together with the
-  engine's hook module, it is the only place with `unsafe` code.
+- **platform** wraps the few system calls the app needs outside the engine. Every function exists
+  on every system: `src/windows/` holds the Win32 code, `src/unix.rs` what macOS and Linux do so
+  far, and what a system can't do yet reports itself unsupported. Together with the engine's hook
+  module, it is the only place with `unsafe` code.
 - **ui** knows nothing about keys. Screens take every colour from `Palette` and every font from
   the theme, so light and dark mode stay consistent. It uses the fonts already on Windows
   (Segoe UI and Segoe Fluent Icons), which adds nothing to the binary.
