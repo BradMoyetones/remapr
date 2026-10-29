@@ -102,7 +102,8 @@ The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No
   (bundle id). The tap is turned back on if macOS disables it for being slow.
 - A first-run screen asks for the Accessibility and Input Monitoring permissions and notices
   when they are granted. A notice explains when Secure Input (password fields) pauses remapping.
-- Menu bar icon, start at login, settings in `~/Library/Application Support`.
+- Menu bar icon, one instance at a time, native file dialogs (import and export), start at login,
+  and the display language from the system rather than the terminal's variables.
 - Remapr's own icon set replaces Segoe Fluent Icons; fonts look native; texts no longer name
   Windows where they mean the system.
 - `cargo xtask dist` builds `Remapr.app` and a DMG. The updater offers new versions and opens
@@ -115,7 +116,9 @@ The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No
 - A udev rule ships in the packages. The first-run screen checks the permissions.
 - The app in front: on X11 first, then on Wayland compositor by compositor. Per-app rules are
   marked as partial where the app in front can't be known.
-- Tray icon, start at login (XDG autostart), AppImage and deb.
+- Tray icon, one instance at a time, file dialogs, start at login (XDG autostart).
+- The window on Wayland with decorations of its own (GNOME draws none for it).
+- AppImage and deb.
 
 ## Phase 12: App shell and profiles
 

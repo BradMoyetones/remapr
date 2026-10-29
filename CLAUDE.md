@@ -1,12 +1,18 @@
 # Remapr: notes for contributors and agents
 
-Windows-only key remapper in pure Rust (eframe/egui 0.37, windows-sys). See README.md for the
-layout and ROADMAP.md for the phases.
+Key remapper in pure Rust (eframe/egui 0.37, windows-sys). It remaps on Windows; it builds, lints
+and tests on macOS and Linux too, which get their backends in later phases. See README.md for the
+layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they build toward.
 
 ## Rules
 
 - `unsafe` lives only in `crates/engine/src/hook.rs` and `crates/platform`. The workspace denies
   `unsafe_code`; those modules opt out with `#[allow(unsafe_code)]`.
+- Code for one system sits in its own `#[cfg]` module (`crates/platform/src/windows/`,
+  `crates/platform/src/unix.rs`, the engine's `hook.rs` and `unsupported.rs`), not scattered
+  through the app. `remapr-platform`'s `lib.rs` lists every public item once, and each system's
+  module provides all of them: an `Unsupported` error, `None` or a no-op where it can't do the job.
+  Dependencies one system needs are target-specific (`[target.'cfg(windows)'.dependencies]`).
 - The hook callback runs for every key on the system and Windows drops slow hooks: no locks,
   allocation, I/O or logging inside it. What it reads lives in thread-locals of the hook thread
   (rules come in as a thread message, the app in front from a WinEvent hook). Put new decisions in
@@ -46,3 +52,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+CI runs these on Windows, macOS and Linux. To check another system's code from yours, add its
+target (`rustup target add x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`…) and run clippy
+with `--target`.
