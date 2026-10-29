@@ -31,8 +31,14 @@ pub use process::{exe_name, running_apps};
 pub use raw_input::stop_raw_keyboard_input;
 pub use registry::install_dir;
 pub use window::{
-    hide_first_show, is_foreground, keep_title_bar_theme, repaint_title_bar_when_shown, small_icon_size, use_exe_icon,
+    hide_first_show, is_foreground, keep_title_bar_theme, repaint_title_bar_when_shown, small_icon_size,
+    tint_title_bar, use_exe_icon,
 };
+
+/// Windows' title bars zoom on a double-click, and draw their own.
+pub fn title_bar_double_click() -> crate::TitleBarDoubleClick {
+    crate::TitleBarDoubleClick::Zoom
+}
 
 /// `%APPDATA%`: settings there roam with the user's account.
 pub fn config_dir() -> Option<PathBuf> {

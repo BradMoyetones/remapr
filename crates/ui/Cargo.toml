@@ -1,6 +1,6 @@
 [package]
 name = "remapr-ui"
-description = "Remapr's design system for egui: light/dark tokens, fonts and widgets"
+description = "Remapr's design system for egui: light/dark tokens, Inter, Lucide icons and widgets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,5 +11,12 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Screenshot tests of the design system: `cargo test -p remapr-ui --features snapshots`. They draw
+# with wgpu, so they stay out of the default build and of CI.
+snapshots = ["dep:egui_kittest"]
+
 [dependencies]
 eframe = { workspace = true }
+egui_extras = { workspace = true }
+egui_kittest = { version = "0.37", features = ["snapshot", "wgpu"], optional = true }

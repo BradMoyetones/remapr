@@ -3,13 +3,15 @@
 
 use std::sync::mpsc::{self, Receiver};
 
-use eframe::egui::{self, Align, Frame, Layout, Margin, RichText, Sense, ThemePreference, ViewportCommand, vec2};
+use eframe::egui::{
+    self, Align, Frame, Layout, Margin, Rect, RichText, Sense, ThemePreference, ViewportCommand, pos2, vec2,
+};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use remapr_engine::{Chord, Engine};
-use remapr_platform::{SingleInstance, startup};
+use remapr_platform::{SingleInstance, TitleBarDoubleClick, startup};
 use remapr_ui::{
-    KeyState, Palette, card, danger_banner, danger_icon_button, icon, icon_button, icon_text, kbd, primary_button,
-    semibold, switch,
+    KeyState, Palette, Tone, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button,
+    semibold, switch, title_bar,
 };
 
 use crate::config::{self, Config, Mapping, Theme};
@@ -17,6 +19,10 @@ use crate::i18n::{tr, trn};
 use crate::keys::{chord_name, chord_text};
 use crate::tray::{self, Command, Tray};
 use crate::updates::{self, Updates};
+
+/// On macOS the window's content runs under its transparent title bar: the header leaves this much
+/// room at the top for the native window buttons.
+const MACOS_TITLE_BAR: i8 = 28;
 
 /// Adding a mapping: first the key to change, then the key it should send.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,7 +43,8 @@ struct Notice {
 pub struct App {
     config: Config,
     engine: Option<Engine>,
-    engine_error: Option<String>,
+    /// Why there is no engine; `Info` when this system just doesn't have one yet.
+    engine_error: Option<(Tone, String)>,
     capture: Capture,
     notice: Option<Notice>,
     /// `None` if Windows refused the tray icon; closing the window then quits.
@@ -51,6 +58,8 @@ pub struct App {
     /// Started at sign-in: the window stays in the tray until asked for.
     start_hidden: bool,
     elevated: bool,
+    /// Whether the title bar was last tinted for the dark theme; `None` before the first time.
+    title_bar_dark: Option<bool>,
     /// `None` when Remapr isn't installed (no sign-in task to switch).
     starts_at_sign_in: Option<bool>,
     updates: Updates,
@@ -91,11 +100,11 @@ impl App {
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
             Ok(engine) => (Some(engine), None),
-            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => (
-                None,
-                Some(tr!("Remapr can't remap keys on this system yet: for now it only works on Windows.").into()),
-            ),
-            Err(e) => (None, Some(tr!("Couldn't start the keyboard engine: {error}", error = e))),
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {
+                let text = tr!("Remapr can't remap keys on this system yet: for now it only works on Windows.");
+                (None, Some((Tone::Info, text.into())))
+            }
+            Err(e) => (None, Some((Tone::Danger, tr!("Couldn't start the keyboard engine: {error}", error = e)))),
         };
 
         let (sender, commands) = mpsc::channel();
@@ -108,6 +117,8 @@ impl App {
         }
         let tray = Tray::new(config.enabled, sender, cc.egui_ctx.clone()).ok();
         let elevated = remapr_platform::is_elevated();
+        // Starts reading the system's setting now, so it is known by the first double-click.
+        let _ = remapr_platform::title_bar_double_click();
 
         let app = Self {
             config,
@@ -122,6 +133,7 @@ impl App {
             hwnd,
             start_hidden: background,
             elevated,
+            title_bar_dark: None,
             // Only the installed copy may touch the task: a dev build would point it at itself.
             starts_at_sign_in: installed.then(startup::starts_at_sign_in).flatten(),
             updates: Updates::new(&cc.egui_ctx, update_source(installed), elevated),
@@ -192,6 +204,7 @@ impl App {
         let (ctx, p) = (ui.ctx().clone(), Palette::of(ui));
         let mut choice = None;
         egui::Modal::new(egui::Id::unique("tray_hint"))
+            .backdrop_color(p.scrim)
             .frame(Frame::new().fill(p.surface).corner_radius(12).inner_margin(20).stroke((1.0, p.border)))
             .show(&ctx, |ui| {
                 ui.set_width(360.0);
@@ -382,7 +395,7 @@ impl App {
                 ui.label(RichText::new(if enabled { tr!("On") } else { tr!("Paused") }).color(p.muted));
                 ui.add_space(4.0);
                 let (glyph, label, next) = match self.config.theme {
-                    Theme::System => (icon::SYSTEM, tr!("Theme: same as Windows"), Theme::Light),
+                    Theme::System => (icon::SYSTEM, tr!("Theme: same as the system"), Theme::Light),
                     Theme::Light => (icon::SUN, tr!("Theme: light"), Theme::Dark),
                     Theme::Dark => (icon::MOON, tr!("Theme: dark"), Theme::System),
                 };
@@ -427,7 +440,7 @@ impl App {
             ui.label(RichText::new(status).small().color(p.muted));
             // Administrator rights only matter to the Windows hook.
             if cfg!(windows) && !self.elevated {
-                ui.label(icon_text(icon::WARNING, 13.0).color(p.muted)).on_hover_text(
+                icon_label(ui, icon::WARNING, 14.0, p.muted).on_hover_text(
                     tr!("Remapr runs without administrator rights: it doesn't remap keys inside windows that have them (Task Manager, installers). Installed, it starts with them."),
                 );
             }
@@ -450,6 +463,31 @@ impl App {
         });
     }
 
+    /// Windows: the native title bar in the palette's colours, so it and the header read as one.
+    fn tint_title_bar(&mut self, ui: &egui::Ui) {
+        let dark = ui.visuals().dark_mode;
+        let Some(hwnd) = self.hwnd.filter(|_| self.title_bar_dark != Some(dark)) else { return };
+        let p = Palette::of(ui);
+        let rgb = |c: egui::Color32| [c.r(), c.g(), c.b()];
+        remapr_platform::tint_title_bar(hwnd, rgb(p.bg), rgb(p.text), rgb(p.border));
+        self.title_bar_dark = Some(dark);
+    }
+
+    /// macOS: dragging the header's empty part moves the window; a double-click does what the
+    /// system's setting says.
+    fn title_bar(&self, ui: &mut egui::Ui, rect: Rect) {
+        let response = title_bar::empty_area(ui, rect);
+        if !response.double_clicked() || title_bar::is_fullscreen(ui) {
+            return;
+        }
+        let command = match remapr_platform::title_bar_double_click() {
+            TitleBarDoubleClick::Zoom => ViewportCommand::Maximized(!title_bar::is_maximized(ui)),
+            TitleBarDoubleClick::Minimize => ViewportCommand::Minimized(true),
+            TitleBarDoubleClick::Nothing => return,
+        };
+        ui.ctx().send_viewport_cmd(command);
+    }
+
     fn set_starts_at_sign_in(&mut self, on: bool) {
         match std::env::current_exe().and_then(|exe| startup::register(&exe, on)) {
             Ok(()) => self.starts_at_sign_in = Some(on),
@@ -462,8 +500,8 @@ impl App {
 
     fn body(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
-        if let Some(e) = &self.engine_error {
-            danger_banner(ui, e);
+        if let Some((tone, e)) = &self.engine_error {
+            banner(ui, *tone, e);
             ui.add_space(4.0);
         }
         self.notice_bar(ui);
@@ -501,7 +539,7 @@ impl App {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         chord_caps(ui, m.source(), KeyState::Idle);
-                        ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
+                        icon_label(ui, icon::FORWARD, 16.0, p.muted);
                         chord_caps(ui, m.target(), KeyState::Idle);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if danger_icon_button(ui, icon::DELETE, tr!("Remove this mapping")).clicked() {
@@ -531,7 +569,7 @@ impl App {
                 match self.capture {
                     Capture::To(from) => {
                         chord_caps(ui, from, KeyState::Idle);
-                        ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
+                        icon_label(ui, icon::FORWARD, 16.0, p.muted);
                         kbd(ui, "?", KeyState::Listening);
                     }
                     _ => {
@@ -563,7 +601,7 @@ impl App {
         let p = Palette::of(ui);
         ui.add_space(56.0);
         ui.vertical_centered(|ui| {
-            ui.label(icon_text(icon::KEYBOARD, 44.0).color(p.muted));
+            icon_label(ui, icon::KEYBOARD, 44.0, p.muted);
             ui.add_space(8.0);
             ui.label(RichText::new(tr!("No keys remapped yet")).font(semibold(17.0)).color(p.text));
             ui.label(
@@ -639,9 +677,21 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let bg = Palette::of(ui).bg;
-        egui::Panel::top("header")
-            .frame(Frame::new().fill(bg).inner_margin(Margin { left: 20, right: 20, top: 18, bottom: 10 }))
-            .show(ui, |ui| self.header(ui));
+        self.tint_title_bar(ui);
+        let mac = cfg!(target_os = "macos");
+        let margin = Margin { left: 20, right: 20, top: if mac { 18 + MACOS_TITLE_BAR } else { 18 }, bottom: 10 };
+        egui::Panel::top("header").frame(Frame::new().fill(bg).inner_margin(margin)).show(ui, |ui| {
+            if mac {
+                // The whole header, margins included, is the title bar there.
+                let inner = ui.max_rect();
+                let rect = Rect::from_min_max(
+                    pos2(inner.left() - f32::from(margin.left), inner.top() - f32::from(margin.top)),
+                    pos2(inner.right() + f32::from(margin.right), inner.bottom() + f32::from(margin.bottom)),
+                );
+                self.title_bar(ui, rect);
+            }
+            self.header(ui);
+        });
         egui::Panel::bottom("footer")
             .frame(Frame::new().fill(bg).inner_margin(Margin::symmetric(20, 10)))
             .show(ui, |ui| self.footer(ui));
