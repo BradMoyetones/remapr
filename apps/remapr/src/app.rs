@@ -5,7 +5,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, Align, Frame, Layout, Margin, RichText, Sense, ThemePreference, ViewportCommand, vec2};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use remapr_engine::{Engine, Vk, key_name};
+use remapr_engine::{Chord, Engine, chord_name};
 use remapr_platform::{SingleInstance, startup};
 use remapr_ui::{
     KeyState, Palette, card, danger_banner, danger_icon_button, icon, icon_button, icon_text, kbd, primary_button,
@@ -21,7 +21,7 @@ use crate::updates::{self, Updates};
 enum Capture {
     Idle,
     From,
-    To(Vk),
+    To(Chord),
 }
 
 struct Notice {
@@ -128,7 +128,7 @@ impl App {
     fn sync(&self) {
         if let Some(engine) = &self.engine {
             engine.set_enabled(self.config.enabled);
-            engine.set_mappings(self.config.mappings.iter().map(|m| (m.from, m.to)));
+            engine.set_rules(self.config.mappings.iter().map(Mapping::rule).collect());
         }
         if let Some(tray) = &self.tray {
             tray.sync(self.config.enabled);
@@ -239,31 +239,31 @@ impl App {
         self.capture = Capture::Idle;
     }
 
-    fn on_captured(&mut self, vk: Vk) {
+    fn on_captured(&mut self, chord: Chord) {
         match self.capture {
             Capture::Idle => {}
             Capture::From => {
-                self.capture = Capture::To(vk);
+                self.capture = Capture::To(chord);
                 if let Some(engine) = &self.engine {
                     engine.start_capture();
                 }
             }
             Capture::To(from) => {
                 self.capture = Capture::Idle;
-                self.add(Mapping { from, to: vk });
+                self.add(Mapping::new(from, chord));
             }
         }
     }
 
     fn add(&mut self, mapping: Mapping) {
-        let (from, to) = (key_name(mapping.from), key_name(mapping.to));
-        if mapping.from == mapping.to {
+        let (from, to) = (chord_text(mapping.source()), chord_text(mapping.target()));
+        if mapping.source() == mapping.target() {
             let text = format!("Elegiste {from} dos veces, así que no se cambió nada.");
             self.notice = Some(Notice { text, undo: None, link: None });
             return;
         }
-        if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.from == mapping.from) {
-            existing.to = mapping.to;
+        if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
+            (existing.to, existing.to_mods) = (mapping.to, mapping.to_mods);
             let text = format!("{from} ya estaba reasignada. Ahora envía {to}.");
             self.notice = Some(Notice { text, undo: None, link: None });
         } else {
@@ -274,14 +274,31 @@ impl App {
 
     fn remove(&mut self, index: usize) {
         let m = self.config.mappings.remove(index);
-        let text = format!("Se quitó {} → {}.", key_name(m.from), key_name(m.to));
+        let text = format!("Se quitó {} → {}.", chord_text(m.source()), chord_text(m.target()));
         self.notice = Some(Notice { text, undo: Some((index, m)), link: None });
+        self.commit();
+    }
+
+    /// Limits mapping `index` to `app`, or lets it apply everywhere with `None`.
+    fn set_app(&mut self, index: usize, app: Option<String>) {
+        let mut moved = self.config.mappings[index].clone();
+        moved.app = app;
+        // Another mapping of the same keys already there: this one replaces it.
+        if let Some(other) =
+            (0..self.config.mappings.len()).find(|&i| i != index && self.config.mappings[i].clashes_with(&moved))
+        {
+            self.config.mappings.remove(other);
+            let index = if other < index { index - 1 } else { index };
+            self.config.mappings[index] = moved;
+        } else {
+            self.config.mappings[index] = moved;
+        }
         self.commit();
     }
 
     fn undo(&mut self, index: usize, mapping: Mapping) {
         self.notice = None;
-        if self.config.mappings.iter().all(|m| m.from != mapping.from) {
+        if self.config.mappings.iter().all(|m| !m.clashes_with(&mapping)) {
             let index = index.min(self.config.mappings.len());
             self.config.mappings.insert(index, mapping);
             self.commit();
@@ -396,7 +413,7 @@ impl App {
             self.capture_card(ui);
         }
 
-        let mut remove = None;
+        let (mut remove, mut set_app) = (None, None);
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             if !self.config.enabled {
                 ui.multiply_opacity(0.55);
@@ -405,12 +422,15 @@ impl App {
                 card(ui, false, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        kbd(ui, &key_name(m.from), KeyState::Idle);
+                        chord_caps(ui, m.source(), KeyState::Idle);
                         ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
-                        kbd(ui, &key_name(m.to), KeyState::Idle);
+                        chord_caps(ui, m.target(), KeyState::Idle);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if danger_icon_button(ui, icon::DELETE, "Quitar este mapeo").clicked() {
                                 remove = Some(i);
+                            }
+                            if let Some(app) = app_picker(ui, m.app.as_deref()) {
+                                set_app = Some((i, app));
                             }
                         });
                     });
@@ -419,6 +439,8 @@ impl App {
         });
         if let Some(i) = remove {
             self.remove(i);
+        } else if let Some((i, app)) = set_app {
+            self.set_app(i, app);
         }
     }
 
@@ -430,7 +452,7 @@ impl App {
             ui.horizontal(|ui| {
                 match self.capture {
                     Capture::To(from) => {
-                        kbd(ui, &key_name(from), KeyState::Idle);
+                        chord_caps(ui, from, KeyState::Idle);
                         ui.label(icon_text(icon::FORWARD, 14.0).color(p.muted));
                         kbd(ui, "?", KeyState::Listening);
                     }
@@ -443,13 +465,14 @@ impl App {
                 });
             });
             let step = match self.capture {
-                Capture::To(_) => "Ahora presiona la tecla que debe enviar en su lugar.",
-                _ => "Presiona la tecla que quieres cambiar.",
+                Capture::To(_) => "Ahora presiona la tecla o combinación que debe enviar en su lugar.",
+                _ => "Presiona la tecla o combinación que quieres cambiar.",
             };
             ui.label(RichText::new(step).font(semibold(14.0)).color(p.text));
             ui.label(
                 RichText::new(
-                    "Cualquier tecla cuenta, incluso Esc o Win. Mientras tanto, el teclado no escribe en otras apps.",
+                    "Para una combinación, mantén Ctrl, Shift, Alt o Win y presiona la tecla. Mientras tanto, \
+                     el teclado no escribe en otras apps.",
                 )
                 .small()
                 .color(p.muted),
@@ -496,7 +519,7 @@ impl App {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     close = icon_button(ui, icon::CLOSE, "Cerrar aviso").clicked();
                     if notice.undo.is_some() && ui.button("Deshacer").clicked() {
-                        undo = notice.undo;
+                        undo = notice.undo.clone();
                     }
                     if notice.link.is_some() && ui.button("Novedades").clicked() {
                         open = notice.link.clone();
@@ -563,4 +586,65 @@ fn update_source(installed: bool) -> Option<remapr_update::Source> {
     }
     let dir = std::env::var_os("REMAPR_UPDATES_DIR").filter(|_| cfg!(debug_assertions))?;
     Some(remapr_update::Source::local(std::path::Path::new(&dir)))
+}
+
+/// `Ctrl + Shift + T`, for messages.
+fn chord_text(chord: Chord) -> String {
+    chord_name(chord).join(" + ")
+}
+
+/// A chord as keycaps joined by small plus signs.
+fn chord_caps(ui: &mut egui::Ui, chord: Chord, state: KeyState) {
+    let muted = Palette::of(ui).muted;
+    ui.spacing_mut().item_spacing.x = 4.0;
+    for (i, name) in chord_name(chord).iter().enumerate() {
+        if i > 0 {
+            ui.label(RichText::new("+").color(muted));
+        }
+        kbd(ui, name, state);
+    }
+    ui.spacing_mut().item_spacing.x = 8.0;
+}
+
+/// Where a mapping applies: every app, or one program picked from those with a window open.
+/// Returns the new choice when the user makes one.
+fn app_picker(ui: &mut egui::Ui, current: Option<&str>) -> Option<Option<String>> {
+    let p = Palette::of(ui);
+    let label = current.map_or("Todas las apps".to_owned(), |exe| format!("Solo en {exe}"));
+    let mut picked = None;
+    ui.menu_button(RichText::new(label).small().color(if current.is_some() { p.accent } else { p.muted }), |ui| {
+        ui.set_max_width(320.0);
+        if ui.selectable_label(current.is_none(), "Todas las apps").clicked() {
+            picked = Some(None);
+        }
+        ui.separator();
+        ui.label(RichText::new("Solo mientras esta app está al frente:").small().color(p.muted));
+        let apps = remapr_platform::running_apps();
+        // Keep the current app listed even when it isn't open right now.
+        let missing = current.filter(|exe| apps.iter().all(|a| a.exe != *exe));
+        if let Some(exe) = missing
+            && ui.selectable_label(true, exe).clicked()
+        {
+            picked = Some(Some(exe.to_owned()));
+        }
+        egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+            for app in &apps {
+                let text = RichText::new(format!("{}  ·  {}", app.exe, truncate(&app.title, 32)));
+                if ui.selectable_label(current == Some(app.exe.as_str()), text).clicked() {
+                    picked = Some(Some(app.exe.clone()));
+                }
+            }
+        });
+        if picked.is_some() {
+            ui.close();
+        }
+    });
+    picked
+}
+
+fn truncate(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((cut, _)) => format!("{}…", &text[..cut]),
+        None => text.to_owned(),
+    }
 }

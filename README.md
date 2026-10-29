@@ -15,6 +15,9 @@ beyond a single small process.
 ## Features
 
 - Remap any key to any other key, system-wide.
+- Shortcuts too: a key to a shortcut (`F1` to `Ctrl + Shift + T`), a shortcut to a key, or one
+  shortcut to another.
+- Any mapping can apply everywhere or only while one app is in front (`chrome.exe`, `code.exe`…).
 - Add a mapping by pressing the keys, not by picking from a list.
 - Pause all remapping with one switch; keys held down while pausing are released correctly.
 - Safe with AltGr layouts (Spanish, German, ...): `@`, `#`, `€` keep working.
@@ -137,8 +140,8 @@ remapr/
 Apps depend on crates, never the other way around. Each crate has one job:
 
 - **engine** knows nothing about the UI. It installs a `WH_KEYBOARD_LL` hook on a dedicated
-  high-priority thread, swaps keys through `SendInput`, and exposes a small API (`set_mappings`,
-  `set_enabled`, `start_capture`). The decision for each key event is plain Rust in `remap.rs`,
+  high-priority thread, swaps keys and shortcuts through `SendInput`, and exposes a small API
+  (`set_rules`, `set_enabled`, `start_capture`). The decision for each key event is plain Rust in `remap.rs`,
   unit-tested without Windows.
 - **platform** wraps the few Win32 calls the app needs outside the engine. Together with the
   engine's hook module, it is the only place with `unsafe` code.
@@ -151,8 +154,10 @@ Apps depend on crates, never the other way around. Each crate has one job:
 
 Windows sends every key press to the hook before any application sees it. If the key is mapped,
 Remapr swallows it and injects the target key instead. Injected keys are ignored by the hook, so a
-mapping can never loop. The callback only reads atomics and a fixed table: no locks, allocation or
-I/O, which keeps added latency in the microseconds.
+mapping can never loop. For a shortcut it also lifts the modifiers the target doesn't use and
+presses the ones it adds, in a single `SendInput`, and puts them back on release. Everything the
+callback reads lives on the hook thread itself (rules arrive as a thread message, the app in front
+from a WinEvent hook): no locks, allocation or I/O, which keeps added latency in the microseconds.
 
 ## License
 

@@ -8,7 +8,9 @@ layout and ROADMAP.md for the phases.
 - `unsafe` lives only in `crates/engine/src/hook.rs` and `crates/platform`. The workspace denies
   `unsafe_code`; those modules opt out with `#[allow(unsafe_code)]`.
 - The hook callback runs for every key on the system and Windows drops slow hooks: no locks,
-  allocation, I/O or logging inside it. Put new decisions in `remap.rs` with a unit test.
+  allocation, I/O or logging inside it. What it reads lives in thread-locals of the hook thread
+  (rules come in as a thread message, the app in front from a WinEvent hook). Put new decisions in
+  `remap.rs` with a unit test.
 - Never let anything register raw keyboard input (`RegisterRawInputDevices`): while a window of a
   process with that registration is in front, Windows skips that process's own low-level hook.
   winit registers it, so the app removes it at startup (`stop_raw_keyboard_input`).

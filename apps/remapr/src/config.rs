@@ -3,7 +3,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use remapr_engine::Vk;
+use remapr_engine::{Chord, Mods, Rule, Vk};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -30,10 +30,46 @@ impl Default for Config {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Pressing `from` (with `from_mods` held) sends `to` (with `to_mods`), everywhere or only in `app`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mapping {
     pub from: Vk,
     pub to: Vk,
+    /// A shortcut's modifiers, as `remapr_engine::Mods` bits; left out for a single key.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub from_mods: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub to_mods: u8,
+    /// Only while this program is in front (`chrome.exe`); every app when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
+}
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
+}
+
+impl Mapping {
+    pub fn new(from: Chord, to: Chord) -> Self {
+        Self { from: from.key, to: to.key, from_mods: from.mods.0, to_mods: to.mods.0, app: None }
+    }
+
+    pub fn source(&self) -> Chord {
+        Chord { mods: Mods(self.from_mods), key: self.from }
+    }
+
+    pub fn target(&self) -> Chord {
+        Chord { mods: Mods(self.to_mods), key: self.to }
+    }
+
+    pub fn rule(&self) -> Rule {
+        Rule { from: self.source(), to: self.target(), app: self.app.clone() }
+    }
+
+    /// Whether `other` fires on the same keys in the same place, so only one of them can stay.
+    pub fn clashes_with(&self, other: &Self) -> bool {
+        self.source() == other.source() && self.app == other.app
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,12 +129,19 @@ mod tests {
         let config = Config {
             enabled: false,
             theme: Theme::Dark,
-            mappings: vec![Mapping { from: 0x14, to: 0x1B }],
+            mappings: vec![
+                Mapping { from: 0x14, to: 0x1B, from_mods: 0, to_mods: 0, app: None },
+                Mapping { from: b'T', to: 0x74, from_mods: 3, to_mods: 1, app: Some("chrome.exe".into()) },
+            ],
             tray_hint_seen: true,
             last_version: "0.1.0".into(),
         };
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
         assert_eq!(toml::from_str::<Config>("").unwrap(), Config::default());
+        // A 0.1 config, single keys only, still reads.
+        let old: Config = toml::from_str("[[mappings]]\nfrom = 20\nto = 27\n").unwrap();
+        assert_eq!(old.mappings[0].rule().from, Chord { mods: Mods::NONE, key: 20 });
+        assert_eq!(old.mappings[0].app, None);
     }
 }

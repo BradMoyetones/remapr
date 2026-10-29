@@ -2,7 +2,14 @@
 
 use std::borrow::Cow;
 
-use crate::Vk;
+use crate::{Chord, Mods, Vk};
+
+/// The names of a chord's keys, modifiers first: `["Ctrl", "Shift", "T"]`. One keycap each.
+pub fn chord_name(chord: Chord) -> Vec<Cow<'static, str>> {
+    let mods = [(Mods::CTRL, "Ctrl"), (Mods::SHIFT, "Shift"), (Mods::ALT, "Alt"), (Mods::WIN, "Win")];
+    let mods = mods.into_iter().filter(|&(m, _)| chord.mods.contains(m)).map(|(_, name)| Cow::Borrowed(name));
+    mods.chain(std::iter::once(key_name(chord.key))).collect()
+}
 
 pub fn key_name(vk: Vk) -> Cow<'static, str> {
     let fixed = match vk {

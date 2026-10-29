@@ -43,11 +43,13 @@ used on a real keyboard.
 - Release workflow: pushing a `v*` tag runs `cargo xtask dist` and publishes the MSI and its
   checksum as a GitHub release.
 
-## Phase 5: Shortcuts and per-app rules
+## Phase 5: Shortcuts and per-app rules (done)
 
-- Key to shortcut (`F1` to `Ctrl+Shift+T`) and shortcut to shortcut.
-- Mappings that only apply while a given app is in the foreground.
-- Conflict warnings when two mappings overlap.
+- Key to shortcut (`F1` to `Ctrl+Shift+T`), shortcut to key, and shortcut to shortcut, captured
+  by pressing them.
+- Mappings that only apply while a given app is in the foreground, picked from the apps open.
+- Overlaps resolved, not warned about: the same keys in the same place replace the old mapping
+  (with a notice); one app's mappings win over global ones, and shortcuts over single keys.
 
 ## Phase 6: Polish
 
