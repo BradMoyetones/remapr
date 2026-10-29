@@ -1,6 +1,6 @@
 [package]
 name = "remapr-platform"
-description = "Windows integration for Remapr: single instance and native window icons"
+description = "Remapr's integration with the operating system: settings folder, single instance, start at sign-in"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,5 +11,5 @@ repository.workspace = true
 [lints]
 workspace = true
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }

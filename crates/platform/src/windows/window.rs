@@ -110,10 +110,10 @@ fn use_dark_mode_colors(hwnd: HWND, dark: bool) {
     // SAFETY: user32 is loaded in every GUI process; the function, if present, has this signature
     // (the one winit declares), and `value` outlives the call.
     unsafe {
-        let user32 = GetModuleHandleW(crate::wide("user32.dll").as_ptr());
+        let user32 = GetModuleHandleW(super::wide("user32.dll").as_ptr());
         let Some(set) = GetProcAddress(user32, c"SetWindowCompositionAttribute".as_ptr().cast()) else { return };
         let set: SetWindowCompositionAttribute = std::mem::transmute(set);
-        let theme = crate::wide(if dark { "DarkMode_Explorer" } else { "" });
+        let theme = super::wide(if dark { "DarkMode_Explorer" } else { "" });
         SetWindowTheme(hwnd, theme.as_ptr(), null());
         let mut value = i32::from(dark);
         let mut data =
