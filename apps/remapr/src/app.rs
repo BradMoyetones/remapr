@@ -40,6 +40,8 @@ pub struct App {
     /// The first close explains where Remapr went before hiding.
     tray_hint_open: bool,
     quitting: bool,
+    /// The native window, for asking Windows whether it is in front.
+    hwnd: Option<isize>,
     /// Started at sign-in: the window stays in the tray until asked for.
     start_hidden: bool,
     elevated: bool,
@@ -50,13 +52,19 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, instance: Option<SingleInstance>, background: bool) -> Self {
         remapr_ui::install(&cc.egui_ctx);
-        if let Ok(RawWindowHandle::Win32(handle)) = cc.window_handle().map(|h| h.as_raw()) {
-            remapr_platform::use_exe_icon(handle.hwnd.get(), tray::ICON_ACTIVE);
-            remapr_platform::repaint_title_bar_when_shown(handle.hwnd.get());
+        let hwnd = match cc.window_handle().map(|h| h.as_raw()) {
+            Ok(RawWindowHandle::Win32(handle)) => Some(handle.hwnd.get()),
+            _ => None,
+        };
+        if let Some(hwnd) = hwnd {
+            remapr_platform::use_exe_icon(hwnd, tray::ICON_ACTIVE);
+            remapr_platform::repaint_title_bar_when_shown(hwnd);
             if background {
-                remapr_platform::hide_first_show(handle.hwnd.get());
+                remapr_platform::hide_first_show(hwnd);
             }
         }
+        // Otherwise our own hook goes blind while this window is in front (see the function).
+        remapr_platform::stop_raw_keyboard_input();
         let (config, load_warning) = Config::load();
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
@@ -84,6 +92,7 @@ impl App {
             commands,
             tray_hint_open: false,
             quitting: false,
+            hwnd,
             start_hidden: background,
             elevated: remapr_platform::is_elevated(),
             starts_at_sign_in: startup::starts_at_sign_in(),
@@ -488,7 +497,8 @@ impl eframe::App for App {
             return;
         }
         // Capturing swallows every key system-wide; never keep doing it behind the user's back.
-        if !ctx.input(|i| i.focused) {
+        // Windows' own answer, not egui's: its focus flag can lag behind.
+        if !self.hwnd.is_some_and(remapr_platform::is_foreground) {
             self.cancel_capture();
         } else if let Some(vk) = self.engine.as_ref().and_then(Engine::captured) {
             self.on_captured(vk);

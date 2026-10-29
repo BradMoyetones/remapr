@@ -8,9 +8,9 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetSystemMetrics, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, PostMessageW,
-    SM_CXICON, SM_CXSMICON, SWP_NOACTIVATE, SWP_SHOWWINDOW, SendMessageW, WINDOWPOS, WM_APP, WM_NCACTIVATE, WM_SETICON,
-    WM_SHOWWINDOW, WM_WINDOWPOSCHANGING,
+    DefWindowProcW, GetForegroundWindow, GetSystemMetrics, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR,
+    LoadImageW, PostMessageW, SM_CXICON, SM_CXSMICON, SWP_NOACTIVATE, SWP_SHOWWINDOW, SendMessageW, WINDOWPOS, WM_APP,
+    WM_NCACTIVATE, WM_SETICON, WM_SHOWWINDOW, WM_WINDOWPOSCHANGING,
 };
 
 const SUBCLASS_ID: usize = 1;
@@ -49,11 +49,12 @@ unsafe extern "system" fn window_subclass(
     // SAFETY: plain messages to our own window; everything else is forwarded untouched.
     unsafe {
         if msg == WM_REPAINT_TITLE_BAR {
-            // The nudge egui gives on theme changes: a round trip through "inactive".
-            SendMessageW(hwnd, WM_NCACTIVATE, 0, 0);
-            if GetForegroundWindow() == hwnd {
-                SendMessageW(hwnd, WM_NCACTIVATE, 1, 0);
-            }
+            // A round trip through the other activation state and back repaints the frame. Straight
+            // to DefWindowProc: winit reads WM_NCACTIVATE as a focus change, and a fake one left
+            // egui believing the window had lost the focus.
+            let active = usize::from(GetForegroundWindow() == hwnd);
+            DefWindowProcW(hwnd, WM_NCACTIVATE, active ^ 1, 0);
+            DefWindowProcW(hwnd, WM_NCACTIVATE, active, 0);
             return 0;
         }
         if msg == WM_WINDOWPOSCHANGING && HIDE_FIRST_SHOW.load(Relaxed) {
@@ -70,6 +71,12 @@ unsafe extern "system" fn window_subclass(
         }
         DefSubclassProc(hwnd, msg, wparam, lparam)
     }
+}
+
+/// Whether `hwnd` is the window the user is typing into.
+pub fn is_foreground(hwnd: isize) -> bool {
+    // SAFETY: a pure query.
+    unsafe { GetForegroundWindow() as isize == hwnd }
 }
 
 /// The side, in pixels, of a small icon (title bar, notification area) at the system DPI.

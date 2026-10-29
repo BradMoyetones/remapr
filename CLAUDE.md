@@ -9,6 +9,11 @@ layout and ROADMAP.md for the phases.
   `unsafe_code`; those modules opt out with `#[allow(unsafe_code)]`.
 - The hook callback runs for every key on the system and Windows drops slow hooks: no locks,
   allocation, I/O or logging inside it. Put new decisions in `remap.rs` with a unit test.
+- Never let anything register raw keyboard input (`RegisterRawInputDevices`): while a window of a
+  process with that registration is in front, Windows skips that process's own low-level hook.
+  winit registers it, so the app removes it at startup (`stop_raw_keyboard_input`).
+- Synthetic keys never reach the remap logic, so scripts can't test it. Debug builds started with
+  `REMAPR_CAPTURE_INJECTED=1` let synthetic keys complete a capture, to script the capture flow.
 - UI code takes colours from `remapr_ui::Palette` and fonts from the theme. No hard-coded colours
   in apps.
 - New widgets go in `crates/ui` and report themselves with `widget_info` for screen readers.

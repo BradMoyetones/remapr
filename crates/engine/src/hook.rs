@@ -33,6 +33,8 @@ static ENABLED: AtomicBool = AtomicBool::new(true);
 static TABLE: [AtomicU8; 256] = [const { AtomicU8::new(0) }; 256];
 static CAPTURING: AtomicBool = AtomicBool::new(false);
 static CAPTURED: AtomicU8 = AtomicU8::new(0);
+/// Debug builds only: let synthetic keys complete a capture, so the capture flow can be scripted.
+static CAPTURE_INJECTED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static HELD: RefCell<[Vk; 256]> = const { RefCell::new([0; 256]) };
@@ -53,6 +55,8 @@ impl Engine {
         if RUNNING.swap(true, Relaxed) {
             return Err(io::Error::new(io::ErrorKind::AlreadyExists, "the engine is already running"));
         }
+        CAPTURE_INJECTED
+            .store(cfg!(debug_assertions) && std::env::var_os("REMAPR_CAPTURE_INJECTED").is_some(), Relaxed);
         let (tx, rx) = mpsc::channel();
         let thread = thread::Builder::new().name("remapr-hook".into()).spawn(move || run(tx, Box::new(on_capture)));
         let thread = match thread {
@@ -159,7 +163,8 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         let action = HELD.with_borrow_mut(|held| {
             // A remapped key released mid-capture still has to lift what it pressed.
             let releasing_held = ev.up && held[usize::from(ev.vk)] != 0;
-            if CAPTURING.load(Relaxed) && !ev.injected && !releasing_held {
+            let capturable = !ev.injected || CAPTURE_INJECTED.load(Relaxed);
+            if CAPTURING.load(Relaxed) && capturable && !releasing_held {
                 capture(ev)
             } else {
                 decide(ev, ENABLED.load(Relaxed), |vk| TABLE[usize::from(vk)].load(Relaxed), held)
