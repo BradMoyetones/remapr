@@ -13,20 +13,21 @@ used on a real keyboard.
 - Settings in `%APPDATA%\Remapr\config.toml` with atomic saves and recovery of a damaged file.
 - CI on Windows: fmt, clippy, tests.
 
-## Phase 2: Live in the background
+## Phase 2: Live in the background (done)
 
-- Tray icon: closing the window keeps remapping on; the tray menu opens, pauses or quits.
-- Single instance: launching again brings the existing window forward.
-- App icon and version info embedded in the executable.
-- Start minimized to the tray when launched at sign-in.
+- Logo: a keycap with an R, in light and dark SVG; `cargo xtask icons` renders the app icons.
+- App icon, paused tray icon and version info embedded in the executable.
+- Tray icon: closing the window keeps remapping on (explained the first time); the tray menu
+  opens, pauses or quits, and the icon dims while paused.
+- Single instance: launching again brings the existing window forward, even across elevation.
 
 ## Phase 3: Installer and administrator mode
 
 - MSI installer (WiX, in `packaging/windows/`) that installs per machine to `Program Files` and
   asks for administrator rights once, at install time.
-- At sign-in Remapr starts through a scheduled task with "run with highest privileges", so it
-  runs as administrator (remaps keys inside elevated windows too) without a UAC prompt on
-  every boot.
+- At sign-in Remapr starts hidden in the tray through a scheduled task with "run with highest
+  privileges", so it runs as administrator (remaps keys inside elevated windows too) without a
+  UAC prompt on every boot.
 - Clean uninstall: removes the task, files and shortcuts; keeps the user's settings unless asked.
 - `cargo xtask dist` builds the release executable and the MSI.
 

@@ -12,11 +12,13 @@ pub struct Config {
     pub enabled: bool,
     pub theme: Theme,
     pub mappings: Vec<Mapping>,
+    /// The user has been told that closing the window keeps Remapr running in the tray.
+    pub tray_hint_seen: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { enabled: true, theme: Theme::System, mappings: Vec::new() }
+        Self { enabled: true, theme: Theme::System, mappings: Vec::new(), tray_hint_seen: false }
     }
 }
 
@@ -80,7 +82,12 @@ mod tests {
 
     #[test]
     fn round_trips_and_fills_missing_fields() {
-        let config = Config { enabled: false, theme: Theme::Dark, mappings: vec![Mapping { from: 0x14, to: 0x1B }] };
+        let config = Config {
+            enabled: false,
+            theme: Theme::Dark,
+            mappings: vec![Mapping { from: 0x14, to: 0x1B }],
+            tray_hint_seen: true,
+        };
         let text = toml::to_string_pretty(&config).unwrap();
         assert_eq!(toml::from_str::<Config>(&text).unwrap(), config);
         assert_eq!(toml::from_str::<Config>("").unwrap(), Config::default());

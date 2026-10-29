@@ -1,14 +1,18 @@
 //! The main window: the list of remapped keys, adding one by pressing keys, pause and theme.
+//! Closing it hides it to the tray; remapping keeps running until "Salir".
 
-use eframe::egui::{
-    self, Align, Frame, Layout, Margin, RichText, Sense, SystemTheme, ThemePreference, ViewportCommand, vec2,
-};
+use std::sync::mpsc::{self, Receiver};
+
+use eframe::egui::{self, Align, Frame, Layout, Margin, RichText, Sense, ThemePreference, ViewportCommand, vec2};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use remapr_engine::{Engine, Vk, key_name};
+use remapr_platform::SingleInstance;
 use remapr_ui::{
     KeyState, Palette, card, danger_banner, icon, icon_button, icon_text, kbd, primary_button, semibold, switch,
 };
 
 use crate::config::{Config, Mapping, Theme};
+use crate::tray::{self, Command, Tray};
 
 /// Adding a mapping: first the key to change, then the key it should send.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -30,55 +34,150 @@ pub struct App {
     engine_error: Option<String>,
     capture: Capture,
     notice: Option<Notice>,
-    /// Applied on the next frame: viewport commands sent before the first one are dropped.
-    theme_dirty: bool,
+    /// `None` if Windows refused the tray icon; closing the window then quits.
+    tray: Option<Tray>,
+    commands: Receiver<Command>,
+    /// The first close explains where Remapr went before hiding.
+    tray_hint_open: bool,
+    quitting: bool,
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, instance: Option<SingleInstance>) -> Self {
         remapr_ui::install(&cc.egui_ctx);
+        if let Ok(RawWindowHandle::Win32(handle)) = cc.window_handle().map(|h| h.as_raw()) {
+            remapr_platform::use_exe_icon(handle.hwnd.get(), tray::ICON_ACTIVE);
+        }
         let (config, load_warning) = Config::load();
         let ctx = cc.egui_ctx.clone();
         let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
             Ok(engine) => (Some(engine), None),
             Err(e) => (None, Some(format!("No se pudo iniciar el motor de teclado: {e}"))),
         };
+
+        let (sender, commands) = mpsc::channel();
+        if let Some(instance) = instance {
+            let (sender, ctx) = (sender.clone(), cc.egui_ctx.clone());
+            instance.listen(move || {
+                let _ = sender.send(Command::Show);
+                ctx.request_repaint();
+            });
+        }
+        let tray = Tray::new(config.enabled, sender, cc.egui_ctx.clone()).ok();
+
         let app = Self {
             config,
             engine,
             engine_error,
             capture: Capture::Idle,
             notice: load_warning.map(|text| Notice { text, undo: None }),
-            theme_dirty: true,
+            tray,
+            commands,
+            tray_hint_open: false,
+            quitting: false,
         };
-        app.sync_engine();
+        app.apply_theme(&cc.egui_ctx);
+        app.sync();
         app
     }
 
-    fn sync_engine(&self) {
+    /// Shows the config's state in the engine and the tray.
+    fn sync(&self) {
         if let Some(engine) = &self.engine {
             engine.set_enabled(self.config.enabled);
             engine.set_mappings(self.config.mappings.iter().map(|m| (m.from, m.to)));
         }
+        if let Some(tray) = &self.tray {
+            tray.sync(self.config.enabled);
+        }
     }
 
-    /// Applies the config to the engine and saves it.
+    /// Applies the config everywhere and saves it.
     fn commit(&mut self) {
-        self.sync_engine();
+        self.sync();
         if let Err(e) = self.config.save() {
             self.notice = Some(Notice { text: format!("No se pudo guardar la configuración: {e}"), undo: None });
         }
     }
 
+    fn show_window(ctx: &egui::Context) {
+        ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(ViewportCommand::Focus);
+    }
+
+    fn hide_to_tray(&mut self, ctx: &egui::Context) {
+        self.cancel_capture();
+        ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+    }
+
+    fn quit(&mut self, ctx: &egui::Context) {
+        self.quitting = true;
+        ctx.send_viewport_cmd(ViewportCommand::Close);
+    }
+
+    fn handle_commands(&mut self, ctx: &egui::Context) {
+        while let Ok(command) = self.commands.try_recv() {
+            match command {
+                Command::Show => Self::show_window(ctx),
+                Command::TogglePause => {
+                    self.config.enabled = !self.config.enabled;
+                    self.commit();
+                }
+                Command::Quit => self.quit(ctx),
+            }
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && self.tray.is_some() {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            if self.config.tray_hint_seen {
+                self.hide_to_tray(ctx);
+            } else {
+                self.tray_hint_open = true;
+            }
+        }
+    }
+
+    fn tray_hint(&mut self, ui: &egui::Ui) {
+        let (ctx, p) = (ui.ctx().clone(), Palette::of(ui));
+        let mut choice = None;
+        egui::Modal::new(egui::Id::unique("tray_hint"))
+            .frame(Frame::new().fill(p.surface).corner_radius(12).inner_margin(20).stroke((1.0, p.border)))
+            .show(&ctx, |ui| {
+                ui.set_width(360.0);
+                ui.label(RichText::new("Remapr sigue funcionando").font(semibold(17.0)).color(p.text));
+                ui.add_space(2.0);
+                ui.label(
+                    RichText::new(
+                        "Tus teclas siguen reasignadas. Encuéntralo en la bandeja del sistema, junto al reloj: \
+                         desde ahí puedes abrirlo, pausarlo o salir.",
+                    )
+                    .color(p.muted),
+                );
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if primary_button(ui, None, "Entendido").clicked() {
+                        choice = Some(false);
+                    }
+                    if ui.button("Salir de Remapr").clicked() {
+                        choice = Some(true);
+                    }
+                });
+            });
+        if let Some(quit) = choice {
+            self.tray_hint_open = false;
+            self.config.tray_hint_seen = true;
+            self.commit();
+            if quit { self.quit(&ctx) } else { self.hide_to_tray(&ctx) }
+        }
+    }
+
+    /// egui also brings the native title bar along (`Options::sync_window_theme`).
     fn apply_theme(&self, ctx: &egui::Context) {
-        let (preference, window) = match self.config.theme {
-            Theme::System => (ThemePreference::System, SystemTheme::SystemDefault),
-            Theme::Light => (ThemePreference::Light, SystemTheme::Light),
-            Theme::Dark => (ThemePreference::Dark, SystemTheme::Dark),
-        };
-        ctx.set_theme(preference);
-        // Keeps the native title bar in step with the app.
-        ctx.send_viewport_cmd(ViewportCommand::SetTheme(window));
+        ctx.set_theme(match self.config.theme {
+            Theme::System => ThemePreference::System,
+            Theme::Light => ThemePreference::Light,
+            Theme::Dark => ThemePreference::Dark,
+        });
     }
 
     fn start_capture(&mut self) {
@@ -170,7 +269,7 @@ impl App {
                 };
                 if icon_button(ui, glyph, label).clicked() {
                     self.config.theme = next;
-                    self.theme_dirty = true;
+                    self.apply_theme(ui.ctx());
                     self.commit();
                 }
             });
@@ -340,9 +439,7 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if std::mem::take(&mut self.theme_dirty) {
-            self.apply_theme(ctx);
-        }
+        self.handle_commands(ctx);
         if self.capture == Capture::Idle {
             return;
         }
@@ -365,5 +462,8 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(Frame::new().fill(bg).inner_margin(Margin::symmetric(20, 6)))
             .show(ui, |ui| self.body(ui));
+        if self.tray_hint_open {
+            self.tray_hint(ui);
+        }
     }
 }

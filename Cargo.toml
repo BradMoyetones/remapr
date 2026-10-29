@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/*", "crates/*"]
+members = ["apps/*", "crates/*", "xtask"]
 default-members = ["apps/remapr"]
 
 [workspace.package]
@@ -13,14 +13,21 @@ repository = "https://github.com/BradMoyetones/remapr"
 
 [workspace.dependencies]
 remapr-engine = { path = "crates/engine" }
+remapr-platform = { path = "crates/platform" }
 remapr-ui = { path = "crates/ui" }
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 toml = "1"
+tray-icon = { version = "0.26", default-features = false }
+winresource = "0.1"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
+    "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }

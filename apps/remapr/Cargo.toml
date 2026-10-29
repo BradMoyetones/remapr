@@ -13,7 +13,13 @@ workspace = true
 
 [dependencies]
 remapr-engine = { workspace = true }
+remapr-platform = { workspace = true }
 remapr-ui = { workspace = true }
 eframe = { workspace = true }
+raw-window-handle = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
+tray-icon = { workspace = true }
+
+[build-dependencies]
+winresource = { workspace = true }
