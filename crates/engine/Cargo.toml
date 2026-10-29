@@ -11,6 +11,6 @@ repository.workspace = true
 [lints]
 workspace = true
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 remapr-platform = { workspace = true }
 windows-sys = { workspace = true }

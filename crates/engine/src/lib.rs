@@ -2,15 +2,26 @@
 //! only while a given app is in front.
 //!
 //! Only [`hook`] touches Win32 and `unsafe`; the decision of what to do with each key lives in
-//! [`remap`], which is plain Rust and fully unit-tested.
+//! [`remap`], which is plain Rust and fully unit-tested on every system.
+//!
+//! The hook is Windows-only for now. Elsewhere [`Engine::start`] fails with
+//! `io::ErrorKind::Unsupported`, until Phases 10 and 11 bring macOS and Linux backends.
 //!
 //! Keys are identified by their Windows virtual-key code (`VK_*`, `u8`).
 
+#[cfg(windows)]
 #[allow(unsafe_code)]
 mod hook;
+// Only the Windows hook calls it for now; its tests run everywhere.
+#[cfg_attr(not(windows), allow(dead_code))]
 mod remap;
+#[cfg(not(windows))]
+mod unsupported;
 
+#[cfg(windows)]
 pub use hook::{Engine, layout_char};
+#[cfg(not(windows))]
+pub use unsupported::{Engine, layout_char};
 
 /// A virtual-key code.
 pub type Vk = u8;

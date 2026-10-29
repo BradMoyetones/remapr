@@ -31,6 +31,8 @@ fn main() -> eframe::Result {
     // windows, with no UAC prompt. A plain launch hands over to that copy.
     let installed = is_installed();
     if !background && installed && !remapr_platform::is_elevated() {
+        // Lets go of the lock. (Only Windows has one; elsewhere `SingleInstance` has no value.)
+        #[cfg_attr(not(windows), allow(clippy::drop_non_drop))]
         drop(instance.take());
         if startup::run().is_ok() && SingleInstance::request_show(Duration::from_secs(3)) {
             return Ok(());

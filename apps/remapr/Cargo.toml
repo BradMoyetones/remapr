@@ -20,7 +20,15 @@ eframe = { workspace = true }
 raw-window-handle = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
 tray-icon = { workspace = true }
+
+# On Linux winit needs X11 or Wayland. Both load their libraries when Remapr starts (winit's own
+# default), so building needs none installed. winit is listed only to turn that on.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { workspace = true, features = ["wayland", "x11"] }
+winit = { workspace = true, features = ["wayland-dlopen"] }
 
 [build-dependencies]
 winresource = { workspace = true }

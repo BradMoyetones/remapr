@@ -50,6 +50,9 @@ fn root() -> PathBuf {
 }
 
 fn dist() -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("dist builds the Windows installer (MSI): run it on Windows".into());
+    }
     let root = root();
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     run(Command::new(cargo).args(["build", "--release", "--locked", "-p", "remapr"]).current_dir(&root))?;
