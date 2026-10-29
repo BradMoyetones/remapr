@@ -14,9 +14,9 @@ use sha2::{Digest, Sha256};
 /// Every size Windows asks for, from the 100% tray icon to the 256 px Explorer tile.
 const ICO_SIZES: [u32; 9] = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 
-/// WiX 5 (as photocraft uses), pinned: NuGet id, version and the package's SHA-256.
-const WIX_PACKAGES: [(&str, &str, &str); 1] =
-    [("wix", "5.0.2", "f30ef0c74e2a986126539c5780be93ac24e8136eaf723b1937b26272703ae173")];
+/// WiX 5 (as photocraft uses), pinned: version and the NuGet package's SHA-256.
+const WIX_VERSION: &str = "5.0.2";
+const WIX_SHA256: &str = "f30ef0c74e2a986126539c5780be93ac24e8136eaf723b1937b26272703ae173";
 
 fn main() -> Result<(), String> {
     match std::env::args().nth(1).as_deref() {
@@ -35,8 +35,7 @@ fn dist() -> Result<(), String> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     run(Command::new(cargo).args(["build", "--release", "--locked", "-p", "remapr"]).current_dir(&root))?;
 
-    let wix = root.join("target").join("wix");
-    fetch_wix(&wix)?;
+    let wix = fetch_wix(&root.join("target").join("wix"))?;
     let version = env!("CARGO_PKG_VERSION");
     // MSI versions are numeric: a pre-release tag is dropped there.
     let msi_version = version.split('-').next().unwrap_or(version);
@@ -44,7 +43,7 @@ fn dist() -> Result<(), String> {
     std::fs::create_dir_all(&dist).map_err(|e| e.to_string())?;
     let msi = dist.join(format!("Remapr-{version}-x64.msi"));
     run(Command::new("dotnet")
-        .arg(wix.join("wix.5.0.2/tools/net6.0/any/wix.dll"))
+        .arg(wix)
         .arg("build")
         .arg(root.join("packaging/windows/remapr.wxs"))
         .args(["-arch", "x64", "-pdbtype", "none"])
@@ -67,34 +66,35 @@ fn dist() -> Result<(), String> {
     Ok(())
 }
 
-/// Downloads and unpacks the pinned WiX packages into `dir`, once.
-fn fetch_wix(dir: &Path) -> Result<(), String> {
+/// Downloads and unpacks the pinned WiX into `dir` unless it is already there; returns `wix.dll`.
+fn fetch_wix(dir: &Path) -> Result<PathBuf, String> {
+    let unpacked = dir.join(format!("wix.{WIX_VERSION}"));
+    let cli = unpacked.join("tools/net6.0/any/wix.dll");
+    // Check the file, not the folder: CI's cache restores `target` without files cargo didn't make.
+    if cli.exists() {
+        return Ok(cli);
+    }
     let system32 =
         PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into())).join("System32");
-    for (id, version, expected) in WIX_PACKAGES {
-        let unpacked = dir.join(format!("{id}.{version}"));
-        if unpacked.exists() {
-            continue;
-        }
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        let nupkg = dir.join(format!("{id}.{version}.nupkg"));
-        let url = format!("https://api.nuget.org/v3-flatcontainer/{id}/{version}/{id}.{version}.nupkg");
-        println!("fetching {url}");
-        // curl.exe and tar.exe (which reads zips) ship with Windows 10 and later.
-        run(Command::new(system32.join("curl.exe")).args(["-sSfL", "-o"]).arg(&nupkg).arg(&url))?;
-        let actual = sha256(&std::fs::read(&nupkg).map_err(|e| e.to_string())?);
-        if actual != expected {
-            let _ = std::fs::remove_file(&nupkg);
-            return Err(format!("{id} {version}: SHA-256 is {actual}, expected {expected}"));
-        }
-        // Unpack beside, then rename: an interrupted run never leaves a half-unpacked folder behind.
-        let partial = dir.join(format!("{id}.{version}.partial"));
-        let _ = std::fs::remove_dir_all(&partial);
-        std::fs::create_dir_all(&partial).map_err(|e| e.to_string())?;
-        run(Command::new(system32.join("tar.exe")).arg("-xf").arg(&nupkg).arg("-C").arg(&partial))?;
-        std::fs::rename(&partial, &unpacked).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let nupkg = dir.join(format!("wix.{WIX_VERSION}.nupkg"));
+    let url = format!("https://api.nuget.org/v3-flatcontainer/wix/{WIX_VERSION}/wix.{WIX_VERSION}.nupkg");
+    println!("fetching {url}");
+    // curl.exe and tar.exe (which reads zips) ship with Windows 10 and later.
+    run(Command::new(system32.join("curl.exe")).args(["-sSfL", "-o"]).arg(&nupkg).arg(&url))?;
+    let actual = sha256(&std::fs::read(&nupkg).map_err(|e| e.to_string())?);
+    if actual != WIX_SHA256 {
+        let _ = std::fs::remove_file(&nupkg);
+        return Err(format!("wix {WIX_VERSION}: SHA-256 is {actual}, expected {WIX_SHA256}"));
     }
-    Ok(())
+    // Unpack beside, then rename: an interrupted run never leaves a half-unpacked folder behind.
+    let partial = dir.join(format!("wix.{WIX_VERSION}.partial"));
+    let _ = std::fs::remove_dir_all(&partial);
+    let _ = std::fs::remove_dir_all(&unpacked);
+    std::fs::create_dir_all(&partial).map_err(|e| e.to_string())?;
+    run(Command::new(system32.join("tar.exe")).arg("-xf").arg(&nupkg).arg("-C").arg(&partial))?;
+    std::fs::rename(&partial, &unpacked).map_err(|e| e.to_string())?;
+    Ok(cli)
 }
 
 fn run(command: &mut Command) -> Result<(), String> {
