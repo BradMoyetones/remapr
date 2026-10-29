@@ -122,9 +122,60 @@ impl Config {
     }
 }
 
+/// What an export file holds: just the mappings, in the config's own format.
+#[derive(Serialize, Deserialize)]
+struct Exported {
+    mappings: Vec<Mapping>,
+}
+
+/// Mappings as an export file's text.
+pub fn export(mappings: &[Mapping]) -> String {
+    let body = toml::to_string_pretty(&Exported { mappings: mappings.to_vec() }).unwrap_or_default();
+    format!("# Remapr: mapeos exportados. Impórtalos desde el menú ⋯ de Remapr.\n\n{body}")
+}
+
+/// The usable mappings in an export file someone hands us. Rows that make no sense (no key, the
+/// same keys on both sides, an app that isn't a program's file name) are left out.
+pub fn import(text: &str) -> Result<Vec<Mapping>, String> {
+    const MAX_BYTES: usize = 1 << 20;
+    const MAX_MAPPINGS: usize = 1000;
+    if text.len() > MAX_BYTES {
+        return Err("El archivo es demasiado grande para ser una exportación de Remapr.".into());
+    }
+    let exported: Exported =
+        toml::from_str(text).map_err(|_| "El archivo no es una exportación de Remapr.".to_owned())?;
+    let valid_app =
+        |app: &str| app.len() <= 260 && app.to_ascii_lowercase().ends_with(".exe") && !app.contains(['\\', '/', ':']);
+    let mappings: Vec<Mapping> = exported
+        .mappings
+        .into_iter()
+        .filter(|m| m.from != 0 && m.to != 0 && m.source() != m.target())
+        .filter(|m| m.from_mods < 16 && m.to_mods < 16 && m.app.as_deref().is_none_or(valid_app))
+        .take(MAX_MAPPINGS)
+        .collect();
+    if mappings.is_empty() { Err("El archivo no tiene mapeos que se puedan usar.".into()) } else { Ok(mappings) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_reads_back_and_import_drops_nonsense() {
+        let good = Mapping { from: 0x14, to: 0x1B, from_mods: 0, to_mods: 0, app: Some("code.exe".into()) };
+        assert_eq!(import(&export(std::slice::from_ref(&good))).unwrap(), vec![good.clone()]);
+
+        let file = "[[mappings]]\nfrom = 20\nto = 20\n\n\
+                    [[mappings]]\nfrom = 20\nto = 27\napp = \"C:\\\\evil\\\\x.exe\"\n\n\
+                    [[mappings]]\nfrom = 0\nto = 27\n\n\
+                    [[mappings]]\nfrom = 20\nto = 27\n";
+        let imported = import(file).unwrap();
+        assert_eq!(imported.len(), 1);
+        assert_eq!(imported[0].app, None);
+
+        assert!(import("not toml at all {").is_err());
+        assert!(import("[[mappings]]\nfrom = 20\nto = 20\n").is_err());
+    }
 
     #[test]
     fn round_trips_and_fills_missing_fields() {

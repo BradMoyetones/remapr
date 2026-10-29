@@ -3,6 +3,8 @@
 
 mod browser;
 #[allow(unsafe_code)]
+mod dialogs;
+#[allow(unsafe_code)]
 mod elevation;
 #[allow(unsafe_code)]
 mod instance;
@@ -17,6 +19,7 @@ pub mod startup;
 mod window;
 
 pub use browser::open_in_browser;
+pub use dialogs::{FileKind, open_file_dialog, save_file_dialog};
 pub use elevation::is_elevated;
 pub use instance::SingleInstance;
 pub use process::{RunningApp, exe_name, running_apps};

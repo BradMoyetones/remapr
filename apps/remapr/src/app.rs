@@ -12,7 +12,7 @@ use remapr_ui::{
     semibold, switch,
 };
 
-use crate::config::{Config, Mapping, Theme};
+use crate::config::{self, Config, Mapping, Theme};
 use crate::tray::{self, Command, Tray};
 use crate::updates::{self, Updates};
 
@@ -282,6 +282,49 @@ impl App {
         self.commit();
     }
 
+    fn export_mappings(&mut self) {
+        let kind = remapr_platform::FileKind { name: "Mapeos de Remapr", extension: "toml" };
+        let Some(path) = remapr_platform::save_file_dialog(self.hwnd, "Exportar mapeos", "remapr-mapeos.toml", &kind)
+        else {
+            return;
+        };
+        let text = match std::fs::write(&path, config::export(&self.config.mappings)) {
+            Ok(()) => format!("Se exportaron {} a {}.", mappings_count(self.config.mappings.len()), path.display()),
+            Err(e) => format!("No se pudo exportar: {e}"),
+        };
+        self.notice = Some(Notice { text, undo: None, link: None });
+    }
+
+    /// Adds the mappings of an export file; one that fires on the same keys in the same place
+    /// replaces the one already here.
+    fn import_mappings(&mut self) {
+        let kind = remapr_platform::FileKind { name: "Mapeos de Remapr", extension: "toml" };
+        let Some(path) = remapr_platform::open_file_dialog(self.hwnd, "Importar mapeos", &kind) else { return };
+        let imported = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| config::import(&t));
+        let text = match imported {
+            Ok(mappings) => {
+                let (total, mut replaced) = (mappings.len(), 0);
+                for mapping in mappings {
+                    if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
+                        *existing = mapping;
+                        replaced += 1;
+                    } else {
+                        self.config.mappings.push(mapping);
+                    }
+                }
+                self.commit();
+                let total = mappings_count(total);
+                match replaced {
+                    0 => format!("Se importaron {total}."),
+                    1 => format!("Se importaron {total}; uno reemplazó al que ya tenías con las mismas teclas."),
+                    n => format!("Se importaron {total}; {n} reemplazaron a los que ya tenías con las mismas teclas."),
+                }
+            }
+            Err(e) => format!("No se pudo importar: {e}"),
+        };
+        self.notice = Some(Notice { text, undo: None, link: None });
+    }
+
     /// Limits mapping `index` to `app`, or lets it apply everywhere with `None`.
     fn set_app(&mut self, index: usize, app: Option<String>) {
         let mut moved = self.config.mappings[index].clone();
@@ -335,6 +378,25 @@ impl App {
                     self.config.theme = next;
                     self.apply_theme(ui.ctx());
                     self.commit();
+                }
+                let mut action = None;
+                let more = icon_button(ui, icon::MORE, "Más opciones");
+                egui::Popup::menu(&more).show(|ui| {
+                    let has_mappings = !self.config.mappings.is_empty();
+                    if ui.add_enabled(has_mappings, egui::Button::new("Exportar mapeos…")).clicked() {
+                        action = Some(true);
+                    }
+                    if ui.button("Importar mapeos…").clicked() {
+                        action = Some(false);
+                    }
+                    if action.is_some() {
+                        ui.close();
+                    }
+                });
+                match action {
+                    Some(true) => self.export_mappings(),
+                    Some(false) => self.import_mappings(),
+                    None => {}
                 }
             });
         });
@@ -652,4 +714,9 @@ fn truncate(text: &str, max: usize) -> String {
         Some((cut, _)) => format!("{}…", &text[..cut]),
         None => text.to_owned(),
     }
+}
+
+/// "1 mapeo", "3 mapeos".
+fn mappings_count(n: usize) -> String {
+    if n == 1 { "1 mapeo".into() } else { format!("{n} mapeos") }
 }
