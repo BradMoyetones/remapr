@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
 use eframe::egui::{self, Align, Layout, RichText};
-use remapr_ui::{Palette, card, icon, icon_button, icon_text, primary_button, semibold};
+use remapr_ui::{Palette, card, icon, icon_button, icon_label, primary_button, semibold};
 use remapr_update::{Error, Release, Source};
 
 use crate::i18n::tr;
@@ -192,7 +192,7 @@ impl Updates {
                 card(ui, true, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        ui.label(icon_text(icon::DOWNLOAD, 18.0).color(p.accent));
+                        icon_label(ui, icon::DOWNLOAD, 18.0, p.accent);
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             let title = tr!("New version available: v{version}", version = release.version);
@@ -241,7 +241,7 @@ impl Updates {
                 card(ui, false, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        ui.label(icon_text(icon::WARNING, 16.0).color(p.danger));
+                        icon_label(ui, icon::ERROR, 16.0, p.danger);
                         ui.add(
                             egui::Label::new(
                                 RichText::new(tr!("Couldn't update. {error}", error = error)).color(p.danger),

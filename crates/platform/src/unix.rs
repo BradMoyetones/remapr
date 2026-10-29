@@ -8,9 +8,10 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
-use crate::{FileKind, RunningApp};
+use crate::{FileKind, RunningApp, TitleBarDoubleClick};
 
 fn unsupported() -> io::Error {
     io::Error::new(io::ErrorKind::Unsupported, "not available on this system yet")
@@ -128,6 +129,41 @@ pub fn small_icon_size() -> u32 {
 
 pub fn use_exe_icon(_hwnd: isize, _id: u16) {}
 
+/// Windows' title bar colours.
+pub fn tint_title_bar(_hwnd: isize, _caption: [u8; 3], _text: [u8; 3], _border: [u8; 3]) {}
+
+/// macOS: the user's setting, read once on a background thread (the first call starts it and zooms
+/// until it is known). Elsewhere a zoom.
+pub fn title_bar_double_click() -> TitleBarDoubleClick {
+    static ACTION: OnceLock<TitleBarDoubleClick> = OnceLock::new();
+    static READ: Once = Once::new();
+    if cfg!(target_os = "macos") {
+        READ.call_once(|| {
+            let _ = std::thread::Builder::new().name("remapr-title-bar-setting".into()).spawn(|| {
+                let out = Command::new("/usr/bin/defaults").args(["read", "-g", "AppleActionOnDoubleClick"]).output();
+                // Absent (never changed) or unreadable: macOS's default, zoom.
+                let action = match out {
+                    Ok(out) if out.status.success() => double_click_action(&String::from_utf8_lossy(&out.stdout)),
+                    _ => TitleBarDoubleClick::Zoom,
+                };
+                let _ = ACTION.set(action);
+            });
+        });
+    }
+    ACTION.get().copied().unwrap_or(TitleBarDoubleClick::Zoom)
+}
+
+/// The global default `AppleActionOnDoubleClick` as `defaults read` prints it. Anything but
+/// "Minimize" or "None" zooms: macOS's default "Maximize", and macOS 15's "Fill", which zooming
+/// comes closest to. (After ArtCraft's craft-window, Apache-2.0.)
+fn double_click_action(defaults_output: &str) -> TitleBarDoubleClick {
+    match defaults_output.trim() {
+        "Minimize" => TitleBarDoubleClick::Minimize,
+        "None" => TitleBarDoubleClick::Nothing,
+        _ => TitleBarDoubleClick::Zoom,
+    }
+}
+
 pub mod startup {
     use super::*;
 
@@ -157,5 +193,15 @@ mod tests {
         let values = ["es_CO:es", "", "en_US.UTF-8", "C.UTF-8", "de_DE@euro", "es"];
         let tags = language_tags(values.iter().map(|v| v.to_string()));
         assert_eq!(tags, ["es-CO", "es", "en-US", "de-DE"]);
+    }
+
+    #[test]
+    fn reads_the_double_click_setting() {
+        assert_eq!(double_click_action("Maximize\n"), TitleBarDoubleClick::Zoom);
+        assert_eq!(double_click_action("Minimize\n"), TitleBarDoubleClick::Minimize);
+        assert_eq!(double_click_action("None\n"), TitleBarDoubleClick::Nothing);
+        for junk in ["", "Fill", "minimize", "1"] {
+            assert_eq!(double_click_action(junk), TitleBarDoubleClick::Zoom, "{junk:?}");
+        }
     }
 }

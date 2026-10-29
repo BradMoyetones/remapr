@@ -1,12 +1,12 @@
 //! Remapr's widgets. Each one reports itself to screen readers through `widget_info`.
 
 use eframe::egui::{
-    self, Align2, CornerRadius, CursorIcon, FontFamily, FontId, InnerResponse, Margin, Rect, Response, Role, Sense,
-    Stroke, StrokeKind, Ui, WidgetInfo, vec2,
+    self, Color32, CornerRadius, CursorIcon, FontFamily, FontId, InnerResponse, Margin, Rect, Response, Role, Sense,
+    Stroke, StrokeKind, Ui, Vec2, WidgetInfo, vec2,
 };
 
 use crate::Palette;
-use crate::theme::{ICONS, SEMIBOLD, icon};
+use crate::theme::{Icon, SEMIBOLD, Tone};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyState {
@@ -45,17 +45,18 @@ pub fn kbd(ui: &mut Ui, label: &str, state: KeyState) -> Response {
     response
 }
 
-/// A square, frameless button showing one [`icon`]. `label` is its tooltip and accessible name.
-pub fn icon_button(ui: &mut Ui, glyph: char, label: &str) -> Response {
-    icon_button_toned(ui, glyph, label, false)
+/// A square, frameless button showing one [`Icon`](crate::icon). `label` is its tooltip and
+/// accessible name.
+pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
+    icon_button_toned(ui, icon, label, false)
 }
 
 /// An [`icon_button`] for an action that deletes something: red, and redder on hover.
-pub fn danger_icon_button(ui: &mut Ui, glyph: char, label: &str) -> Response {
-    icon_button_toned(ui, glyph, label, true)
+pub fn danger_icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
+    icon_button_toned(ui, icon, label, true)
 }
 
-fn icon_button_toned(ui: &mut Ui, glyph: char, label: &str, danger: bool) -> Response {
+fn icon_button_toned(ui: &mut Ui, icon: Icon, label: &str, danger: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(32.0), Sense::click());
     let p = Palette::of(ui);
     if ui.is_rect_visible(rect) {
@@ -72,19 +73,19 @@ fn icon_button_toned(ui: &mut Ui, glyph: char, label: &str, danger: bool) -> Res
             ui.painter().rect_stroke(rect, CornerRadius::same(8), Stroke::new(1.5, ring), StrokeKind::Inside);
         }
         let color = if hovered { active } else { idle };
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, glyph, icon_font(16.0), color);
+        paint_icon(ui, icon, rect.center(), 16.0, color);
     }
     response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), label));
     response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(label)
 }
 
 /// The one main action of a screen: filled with the accent colour, with an optional leading icon.
-pub fn primary_button(ui: &mut Ui, glyph: Option<char>, text: &str) -> Response {
+pub fn primary_button(ui: &mut Ui, icon: Option<Icon>, text: &str) -> Response {
     let p = Palette::of(ui);
     let enabled = ui.is_enabled();
     let galley =
         ui.painter().layout_no_wrap(text.to_owned(), FontId::new(14.0, FontFamily::Name(SEMIBOLD.into())), p.on_accent);
-    let icon_w = if glyph.is_some() { 22.0 } else { 0.0 };
+    let icon_w = if icon.is_some() { 22.0 } else { 0.0 };
     let size = vec2(galley.size().x + icon_w + 28.0, 34.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
@@ -101,14 +102,8 @@ pub fn primary_button(ui: &mut Ui, glyph: Option<char>, text: &str) -> Response 
             );
         }
         let mut x = rect.left() + 14.0;
-        if let Some(glyph) = glyph {
-            painter.text(
-                egui::pos2(x + 8.0, rect.center().y),
-                Align2::CENTER_CENTER,
-                glyph,
-                icon_font(14.0),
-                p.on_accent,
-            );
+        if let Some(icon) = icon {
+            paint_icon(ui, icon, egui::pos2(x + 8.0, rect.center().y), 16.0, p.on_accent);
             x += icon_w;
         }
         painter.galley(egui::pos2(x, rect.center().y - galley.size().y / 2.0), galley, p.on_accent);
@@ -128,7 +123,7 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     if ui.is_rect_visible(rect) {
         let p = Palette::of(ui);
         let t = ui.ctx().animate_bool_responsive(response.id, *on);
-        let track = if *on { p.accent } else { p.border };
+        let track = if *on { p.accent } else { p.control };
         let radius = CornerRadius::same(11);
         ui.painter().rect_filled(rect, radius, track);
         if response.has_focus() {
@@ -158,28 +153,33 @@ pub fn card<R>(ui: &mut Ui, highlight: bool, add_contents: impl FnOnce(&mut Ui) 
         .show(ui, add_contents)
 }
 
-/// A full-width error message.
-pub fn danger_banner(ui: &mut Ui, text: &str) {
-    let p = Palette::of(ui);
+/// A full-width message in the colours of its `tone`, with the tone's icon.
+pub fn banner(ui: &mut Ui, tone: Tone, text: &str) {
+    let (strong, soft) = Palette::of(ui).tone(tone);
     egui::Frame::new()
-        .fill(p.danger_soft)
-        .stroke(Stroke::new(1.0, p.danger.gamma_multiply(0.5)))
+        .fill(soft)
+        .stroke(Stroke::new(1.0, strong.gamma_multiply(0.5)))
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(icon::WARNING).font(icon_font(16.0)).color(p.danger));
-                ui.add(egui::Label::new(egui::RichText::new(text).color(p.danger)).wrap());
+                icon_label(ui, tone.icon(), 16.0, strong);
+                ui.add(egui::Label::new(egui::RichText::new(text).color(strong)).wrap());
             });
         });
 }
 
-fn icon_font(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name(ICONS.into()))
+/// An [`Icon`] of `size` points, laid out like a label. Decorative: give it a tooltip with
+/// `on_hover_text` when it carries meaning on its own.
+pub fn icon_label(ui: &mut Ui, icon: Icon, size: f32, color: Color32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        icon.image(size, color).paint_at(ui, rect);
+    }
+    response
 }
 
-/// An [`icon`] as text, to place inline with `ui.label`.
-pub fn icon_text(glyph: char, size: f32) -> egui::RichText {
-    egui::RichText::new(glyph).font(icon_font(size))
+fn paint_icon(ui: &Ui, icon: Icon, center: egui::Pos2, size: f32, color: Color32) {
+    icon.image(size, color).paint_at(ui, Rect::from_center_size(center, Vec2::splat(size)));
 }

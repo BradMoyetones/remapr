@@ -17,7 +17,8 @@ use windows as os;
 pub use os::{
     SingleInstance, config_dir, exe_name, hide_first_show, install_dir, is_elevated, is_foreground,
     keep_title_bar_theme, open_file_dialog, open_in_browser, preferred_languages, repaint_title_bar_when_shown,
-    running_apps, save_file_dialog, small_icon_size, stop_raw_keyboard_input, use_exe_icon,
+    running_apps, save_file_dialog, small_icon_size, stop_raw_keyboard_input, tint_title_bar, title_bar_double_click,
+    use_exe_icon,
 };
 
 /// Starting Remapr when the user signs in.
@@ -26,6 +27,15 @@ pub mod startup {
     pub const BACKGROUND_ARG: &str = "--background";
 
     pub use crate::os::startup::{register, run, starts_at_sign_in, unregister};
+}
+
+/// What double-clicking a window's title bar does: System Settings › Desktop & Dock on macOS; a
+/// zoom (maximize) everywhere else.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TitleBarDoubleClick {
+    Zoom,
+    Minimize,
+    Nothing,
 }
 
 /// What the file dialogs offer: files ending in `.{extension}`, described as `name`.

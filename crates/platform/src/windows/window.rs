@@ -4,6 +4,9 @@ use std::ptr::null;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, Ordering::Relaxed};
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::{
+    DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DwmSetWindowAttribute,
+};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows_sys::Win32::UI::Controls::SetWindowTheme;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
@@ -49,6 +52,23 @@ pub fn hide_first_show(hwnd: isize) {
 /// broadcasts (wallpaper, accent colour…); the window subclass applies the app's again right after.
 pub fn keep_title_bar_theme(dark: Option<bool>) {
     TITLE_BAR_THEME.store(dark.map_or(0, |dark| if dark { 2 } else { 1 }), Relaxed);
+}
+
+/// Paints the title bar of `hwnd` in the app's colours: its background, title and border, as RGB.
+/// The native frame stays (Snap Layouts, shadow, resizing); with the caption in the app's
+/// background, the title bar and the app read as one surface. Windows 11 only: Windows 10 ignores
+/// these attributes and keeps its light or dark title bar.
+pub fn tint_title_bar(hwnd: isize, caption: [u8; 3], text: [u8; 3], border: [u8; 3]) {
+    // COLORREF: 0x00BBGGRR.
+    let colorref = |[r, g, b]: [u8; 3]| u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16;
+    for (attribute, color) in [(DWMWA_CAPTION_COLOR, caption), (DWMWA_TEXT_COLOR, text), (DWMWA_BORDER_COLOR, border)] {
+        let value = colorref(color);
+        // SAFETY: a COLORREF-sized value for an attribute that takes one, on our own window. A
+        // failure (Windows 10) leaves the frame as it was.
+        unsafe {
+            DwmSetWindowAttribute(hwnd as HWND, attribute as u32, (&raw const value).cast(), size_of::<u32>() as u32)
+        };
+    }
 }
 
 unsafe extern "system" fn window_subclass(

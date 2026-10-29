@@ -42,15 +42,18 @@ fn main() -> eframe::Result {
         instance = again;
     }
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("Remapr")
-            .with_inner_size([560.0, 640.0])
-            .with_min_inner_size([460.0, 460.0])
-            // No egui logo: the app sets the exe's own icon once the window exists.
-            .with_icon(eframe::egui::IconData::default()),
-        ..Default::default()
-    };
+    let mut viewport = eframe::egui::ViewportBuilder::default()
+        .with_title("Remapr")
+        .with_inner_size([560.0, 640.0])
+        .with_min_inner_size([460.0, 460.0])
+        // No egui logo: the app sets the exe's own icon once the window exists.
+        .with_icon(eframe::egui::IconData::default());
+    if cfg!(target_os = "macos") {
+        // The header runs under a transparent title bar, beside the native window buttons, as
+        // ArtCraft's apps do. Windows keeps its own frame, tinted by the app; Linux the desktop's.
+        viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+    }
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         "Remapr",
         options,
