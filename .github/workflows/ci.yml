@@ -33,3 +33,22 @@ jobs:
         with:
           name: remapr-installer
           path: target/dist/
+
+  snapshots:
+    name: design snapshots
+    # Draws the design system with wgpu (Metal), light and dark, and keeps the pictures as the
+    # run's `design-snapshots` artifact, for reviewing a change of look.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p remapr-ui --features snapshots --test gallery
+        env:
+          UPDATE_SNAPSHOTS: "1"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-snapshots
+          path: crates/ui/tests/snapshots/
+          if-no-files-found: ignore
