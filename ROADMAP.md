@@ -63,6 +63,7 @@ used on a real keyboard.
 
 ## Later
 
-- Code signing, so SmartScreen does not warn on first install (needs a certificate).
+- Code signing with Azure Trusted Signing, so SmartScreen does not warn on first install: sign
+  `remapr.exe` and the MSI in the release workflow, with the account's credentials as secrets.
 - The installer in English too (it is Spanish only).
 - A language picker, if following Windows isn't enough for someone.
