@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = ["apps/*", "crates/*"]
+default-members = ["apps/remapr"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+authors = ["Brad Moyetones"]
+repository = "https://github.com/BradMoyetones/remapr"
+
+[workspace.dependencies]
+remapr-engine = { path = "crates/engine" }
+remapr-ui = { path = "crates/ui" }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[workspace.lints.rust]
+# `deny`, not `forbid`: the engine's hook module is the one place allowed to opt out.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

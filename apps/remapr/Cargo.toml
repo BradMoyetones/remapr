@@ -1,0 +1,19 @@
+[package]
+name = "remapr"
+description = "Fast, native key remapper for Windows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+remapr-engine = { workspace = true }
+remapr-ui = { workspace = true }
+eframe = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
