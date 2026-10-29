@@ -22,7 +22,9 @@ pub use instance::SingleInstance;
 pub use process::{RunningApp, exe_name, running_apps};
 pub use raw_input::stop_raw_keyboard_input;
 pub use registry::install_dir;
-pub use window::{hide_first_show, is_foreground, repaint_title_bar_when_shown, small_icon_size, use_exe_icon};
+pub use window::{
+    hide_first_show, is_foreground, keep_title_bar_theme, repaint_title_bar_when_shown, small_icon_size, use_exe_icon,
+};
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain([0]).collect()

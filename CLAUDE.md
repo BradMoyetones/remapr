@@ -21,7 +21,9 @@ layout and ROADMAP.md for the phases.
 - New widgets go in `crates/ui` and report themselves with `widget_info` for screen readers.
 - User-facing text is Spanish for now; code, comments and docs are English.
 - The window theme follows `ctx.set_theme`: egui syncs the native title bar itself
-  (`Options::sync_window_theme`). Don't send `ViewportCommand::SetTheme` by hand; it fights that sync.
+  (`Options::sync_window_theme`). Don't send `ViewportCommand::SetTheme` by hand; it fights that
+  sync. `keep_title_bar_theme` re-applies the theme after Windows settings changes, which winit
+  resets.
 - Icons are generated: edit `assets/logo-*.svg`, run `cargo xtask icons`, commit the outputs.
 - The installer runs `remapr.exe --register-task` / `--unregister-task` as SYSTEM: `main` handles
   them before anything that needs a window or a user session.

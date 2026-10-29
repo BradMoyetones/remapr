@@ -218,11 +218,13 @@ impl App {
 
     /// egui also brings the native title bar along (`Options::sync_window_theme`).
     fn apply_theme(&self, ctx: &egui::Context) {
-        ctx.set_theme(match self.config.theme {
-            Theme::System => ThemePreference::System,
-            Theme::Light => ThemePreference::Light,
-            Theme::Dark => ThemePreference::Dark,
-        });
+        let (preference, dark) = match self.config.theme {
+            Theme::System => (ThemePreference::System, None),
+            Theme::Light => (ThemePreference::Light, Some(false)),
+            Theme::Dark => (ThemePreference::Dark, Some(true)),
+        };
+        ctx.set_theme(preference);
+        remapr_platform::keep_title_bar_theme(dark);
     }
 
     fn start_capture(&mut self) {
@@ -548,6 +550,7 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(ViewportCommand::Visible(false));
         }
         self.handle_commands(ctx);
+        // winit puts the system theme back on the title bar after some Windows settings changes.
         if self.updates.poll() {
             self.quit(ctx);
         }
