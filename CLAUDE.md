@@ -23,7 +23,19 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
 - Synthetic keys never reach the remap logic, so scripts can't test it. Debug builds started with
   `REMAPR_CAPTURE_INJECTED=1` let synthetic keys complete a capture, to script the capture flow.
 - UI code takes colours from `remapr_ui::Palette` and fonts from the theme. No hard-coded colours
-  in apps.
+  in apps. The `palette_contrast` test checks every pairing screens use (AAA for body text, AA for
+  other text and status colours, 3:1 for controls); a new token gets its rows there.
+- Text is Inter on every system (cut down: `crates/ui/assets/fonts/README.md`). Icons are Lucide
+  SVGs in `crates/ui/assets/icons`, listed in `remapr_ui::icon`; add new ones unchanged, from the
+  same Lucide version.
+- Code or assets taken from another project keep their licence notice and get a row in
+  ATTRIBUTION.md.
+- The title bar follows ArtCraft's craft-window rule. Windows keeps its native frame, tinted with
+  the palette (`tint_title_bar`). macOS runs the header under a transparent title bar, keeps
+  `MACOS_TITLE_BAR` points clear for the window buttons, and lets the header's empty part drag the
+  window (`remapr_ui::title_bar`). Linux keeps the desktop's frame.
+- New widgets also go in the design snapshots (`crates/ui/tests/gallery.rs`): `cargo test -p
+  remapr-ui --features snapshots` draws them, light and dark, with wgpu.
 - New widgets go in `crates/ui` and report themselves with `widget_info` for screen readers.
 - User-facing text is written in English in the code, through `tr!`, `trn!` (counts) and `key!`
   (key names), and translated in `apps/remapr/locales/<lang>.tsv` (craft-i18n's format). The test

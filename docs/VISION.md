@@ -122,7 +122,16 @@ as a target and "hide the physical controller" are locked.
    help install it, and keep it behind a trait so another driver can replace it. Whether to write
    our own driver (which needs EV signing and Microsoft's attestation) is decided in Phase 15, not
    before.
-6. **reWASD is studied, never reverse-engineered.**
+6. **One look on every system, not each system's own.**
+   - Text is Inter, the logo's typeface and the one ArtCraft's suite ships. Icons are Lucide,
+     ArtCraft's set. SF Symbols can't be used outside Apple's platforms, and Heroicons has no
+     controller or mouse icons.
+   - The palette's contrast is a test. The dark theme is near black (`#09090B`): deep on OLED,
+     with its layers still apart.
+   - The title bar follows ArtCraft's rule. Windows and macOS keep the system's frame; on macOS
+     the header runs under it, transparent. Linux keeps the desktop's frame, except on GNOME
+     Wayland, which draws none.
+7. **reWASD is studied, never reverse-engineered.**
    - On Windows, we look at its public interface and features and describe them in our own words
      in `docs/research/rewasd.md`. Screenshots stay private, and none of its text, icons or
      binaries come into the repository.
@@ -141,7 +150,9 @@ These are read from the repositories of [storytold](https://github.com/storytold
 | The chords each system keeps for itself: Alt+Tab and Alt+F4 on Windows, Cmd+Tab on macOS, Ctrl+Alt+F1…F12 on Linux. | `craft-libs:crates/keymap` (`reserved::system`) | Warnings when mapping them (Phase 12) |
 | One update flow over many package kinds (MSI, DMG, AppImage, deb…). | `craft-libs:crates/update` | `crates/update` (Phases 10 and 11) |
 | Logging through the `log` facade to a rotated file in the settings folder. | `vectorcraft:apps/vectorcraft/src/logging.rs` | Phase 9 |
-| SVG icon sets instead of a system icon font. | `craft-libs:crates/ui` (`icons::SvgIconSet`) | Remapr's own icons (Phase 10) |
+| SVG icon sets (Lucide) instead of a system icon font, and Inter as the suite's typeface. | `craft-libs:crates/ui` (`icons::SvgIconSet`), `photocraft:assets/icons`, `craft-fonts` | Remapr's icons and fonts (Phase 7) |
+| Who draws the window frame on each system, and an app strip that acts as the title bar. | `craft-libs:crates/window` (`title_bar`) | Windows and macOS (Phase 7), Linux (Phase 11) |
+| Screenshot tests of the UI with `egui_kittest`. | `craft-libs:crates/ui` (`screen-testing`) | Design snapshots (Phase 7) |
 | `packaging/{windows,macos,linux}` with Info.plist, entitlements, `.desktop` and nfpm files. | `vectorcraft:packaging` | Phases 10 and 11 |
 | Translations as TSV catalogs keyed by the English text. | `craft-i18n` | Already in Remapr since Phase 6 |
 
