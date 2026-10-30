@@ -10,16 +10,16 @@ use eframe::egui::{
     self, Align, Frame, Layout, Margin, Rect, RichText, Sense, ThemePreference, ViewportCommand, pos2, vec2,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use remapr_core::{AppMatcher, Chord};
+use remapr_core::{AppMatcher, Chord, Permission, Support};
 use remapr_platform::{SingleInstance, TitleBarDoubleClick, startup};
 use remapr_ui::{
-    KeyState, Palette, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button, semibold,
-    switch, title_bar,
+    KeyState, Palette, Tone, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button,
+    semibold, switch, title_bar,
 };
 
 use crate::config::{self, Config, Theme};
 use crate::i18n::{tr, trn};
-use crate::keys::chord_name;
+use crate::keys::{chord_name, modifier_names};
 use crate::session::{Capture, Notice, Session};
 use crate::tray::{self, Command, Tray};
 use crate::updates::{self, Updates};
@@ -300,10 +300,13 @@ impl App {
 
     fn footer(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
+        let waiting = matches!(self.session.capabilities().keyboard, Support::NeedsPermission(_));
         let (color, status) = match (self.session.is_running(), self.session.config.enabled) {
             (false, _) => (p.danger, tr!("Engine stopped")),
-            (true, true) => (p.success, tr!("Engine running")),
             (true, false) => (p.muted, tr!("Paused: your keys work as usual")),
+            (true, true) if waiting => (p.warning, tr!("Waiting for permission")),
+            (true, true) if self.session.blocked() => (p.muted, tr!("On hold while a password is typed")),
+            (true, true) => (p.success, tr!("Engine running")),
         };
         ui.horizontal(|ui| {
             let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
@@ -373,6 +376,19 @@ impl App {
         let p = Palette::of(ui);
         if let Some((tone, e)) = self.session.status() {
             banner(ui, *tone, e);
+            ui.add_space(4.0);
+        }
+        if let Support::NeedsPermission(permission) = self.session.capabilities().keyboard {
+            self.permission_card(ui, permission);
+        }
+        if self.session.blocked() {
+            banner(
+                ui,
+                Tone::Info,
+                tr!(
+                    "macOS keeps every key from Remapr while you type a password. Remapping resumes once you leave the field."
+                ),
+            );
             ui.add_space(4.0);
         }
         self.notice_bar(ui);
@@ -458,7 +474,7 @@ impl App {
             };
             ui.label(RichText::new(step).font(semibold(14.0)).color(p.text));
             ui.label(
-                RichText::new(tr!("For a shortcut, hold Ctrl, Shift, Alt or Win and press the key. Meanwhile, the keyboard doesn't type into other apps."))
+                RichText::new(tr!("For a shortcut, hold a modifier ({modifiers}) and press the key. Meanwhile, the keyboard doesn't type into other apps.", modifiers = modifier_names()))
                 .small()
                 .color(p.muted),
             );
@@ -467,6 +483,41 @@ impl App {
         if cancel {
             self.session.cancel_capture();
         }
+    }
+
+    /// What the system asks before Remapr may change keys, and a way to grant it.
+    fn permission_card(&mut self, ui: &mut egui::Ui, permission: Permission) {
+        let (title, text, pane) = match permission {
+            Permission::Accessibility => (
+                tr!("Let Remapr change keys"),
+                tr!(
+                    "macOS asks you to allow it once: turn Remapr on in System Settings › Privacy & Security › Accessibility. Until then, keys swapped in every app still work; shortcuts, mappings for one app, and adding a mapping by pressing keys need it."
+                ),
+                "Privacy_Accessibility",
+            ),
+            Permission::InputMonitoring => (
+                tr!("Let Remapr read keys"),
+                tr!(
+                    "macOS asks you to allow it once: turn Remapr on in System Settings › Privacy & Security › Input Monitoring."
+                ),
+                "Privacy_ListenEvent",
+            ),
+            // Linux's device access comes with its backend (Phase 11).
+            Permission::InputDevices => return,
+        };
+        let p = Palette::of(ui);
+        card(ui, true, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(title).font(semibold(15.0)).color(p.text));
+            ui.add(egui::Label::new(RichText::new(text).color(p.muted)).wrap());
+            ui.add_space(4.0);
+            if primary_button(ui, None, tr!("Open System Settings")).clicked() {
+                self.session.ask_permission(permission);
+                remapr_platform::open_privacy_settings(pane);
+            }
+            ui.label(RichText::new(tr!("Remapr notices by itself once it's allowed.")).small().color(p.muted));
+        });
+        ui.add_space(4.0);
     }
 
     fn empty_state(&mut self, ui: &mut egui::Ui) {
@@ -537,8 +588,12 @@ impl eframe::App for App {
         }
         self.session.poll();
         // Capturing swallows every key system-wide; never keep doing it behind the user's back.
-        // Windows' own answer, not egui's: its focus flag can lag behind.
-        if self.session.capture() != Capture::Idle && !self.hwnd.is_some_and(remapr_platform::is_foreground) {
+        // On Windows, Windows' own answer, not egui's: its focus flag can lag behind.
+        let in_front = match self.hwnd {
+            Some(hwnd) => remapr_platform::is_foreground(hwnd),
+            None => ctx.input(|i| i.focused),
+        };
+        if self.session.capture() != Capture::Idle && !in_front {
             self.session.cancel_capture();
         }
         // Here too, not only after `ui`: a hidden window runs no `ui`, and the tray can pause.

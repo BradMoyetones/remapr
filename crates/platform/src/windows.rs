@@ -35,6 +35,9 @@ pub use window::{
     tint_title_bar, use_exe_icon,
 };
 
+/// macOS's privacy settings: Windows asks for no such permission.
+pub fn open_privacy_settings(_pane: &str) {}
+
 /// Windows' title bars zoom on a double-click, and draw their own.
 pub fn title_bar_double_click() -> crate::TitleBarDoubleClick {
     crate::TitleBarDoubleClick::Zoom

@@ -16,9 +16,9 @@ use windows as os;
 
 pub use os::{
     SingleInstance, config_dir, exe_name, hide_first_show, install_dir, is_elevated, is_foreground,
-    keep_title_bar_theme, open_file_dialog, open_in_browser, preferred_languages, repaint_title_bar_when_shown,
-    running_apps, save_file_dialog, small_icon_size, stop_raw_keyboard_input, tint_title_bar, title_bar_double_click,
-    use_exe_icon,
+    keep_title_bar_theme, open_file_dialog, open_in_browser, open_privacy_settings, preferred_languages,
+    repaint_title_bar_when_shown, running_apps, save_file_dialog, small_icon_size, stop_raw_keyboard_input,
+    tint_title_bar, title_bar_double_click, use_exe_icon,
 };
 
 /// Starting Remapr when the user signs in.

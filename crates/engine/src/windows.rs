@@ -28,6 +28,10 @@ pub const CAPABILITIES: Capabilities = Capabilities {
     hide_controllers: Support::NotYet,
 };
 
+pub fn capabilities() -> Capabilities {
+    CAPABILITIES
+}
+
 /// Installs the keyboard hook.
 #[cfg(windows)]
 pub fn start(wake: impl Fn() + Send + 'static) -> std::io::Result<Box<dyn remapr_core::Backend>> {

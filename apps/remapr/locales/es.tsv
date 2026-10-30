@@ -8,7 +8,14 @@
 	Remapr was updated to version {version}.	Remapr se actualizó a la versión {version}.
 	Couldn't start the keyboard engine: {error}	No se pudo iniciar el motor de teclado: {error}
 	The keyboard engine stopped: {error}	El motor de teclado se detuvo: {error}
-	Remapr can't remap keys on this system yet: for now it only works on Windows.	Remapr todavía no puede reasignar teclas en este sistema: por ahora solo funciona en Windows.
+	macOS keeps every key from Remapr while you type a password. Remapping resumes once you leave the field.	macOS no le deja ver ninguna tecla a Remapr mientras escribes una contraseña. La reasignación sigue en cuanto sales del campo.
+	Let Remapr change keys	Permite que Remapr cambie teclas
+	macOS asks you to allow it once: turn Remapr on in System Settings › Privacy & Security › Accessibility. Until then, keys swapped in every app still work; shortcuts, mappings for one app, and adding a mapping by pressing keys need it.	macOS pide que lo permitas una vez: activa Remapr en Ajustes del Sistema › Privacidad y seguridad › Accesibilidad. Mientras tanto, las teclas cambiadas en todas las apps siguen funcionando; las combinaciones, los mapeos para una app y añadir un mapeo pulsando teclas lo necesitan.
+	Let Remapr read keys	Permite que Remapr lea teclas
+	macOS asks you to allow it once: turn Remapr on in System Settings › Privacy & Security › Input Monitoring.	macOS pide que lo permitas una vez: activa Remapr en Ajustes del Sistema › Privacidad y seguridad › Monitorización de entrada.
+	Open System Settings	Abrir Ajustes del Sistema
+	Remapr notices by itself once it's allowed.	Remapr lo notará solo en cuanto lo permitas.
+	Remapr can't remap keys on this system yet: for now it works on Windows and macOS.	Remapr todavía no puede reasignar teclas en este sistema: por ahora funciona en Windows y macOS.
 	Couldn't save the settings: {error}	No se pudo guardar la configuración: {error}
 	Remapr is still running	Remapr sigue funcionando
 	Your keys stay remapped. Find Remapr in the notification area, by the clock: from there you can open it, pause it or quit.	Tus teclas siguen reasignadas. Encuéntralo en la bandeja del sistema, junto al reloj: desde ahí puedes abrirlo, pausarlo o salir.
@@ -39,6 +46,8 @@
 	Import mappings…	Importar mapeos…
 	Engine stopped	Motor detenido
 	Engine running	Motor activo
+	Waiting for permission	Esperando permiso
+	On hold while a password is typed	En espera mientras escribes una contraseña
 	Paused: your keys work as usual	En pausa: tus teclas funcionan como siempre
 	Remapr runs without administrator rights: it doesn't remap keys inside windows that have them (Task Manager, installers). Installed, it starts with them.	Remapr corre sin permisos de administrador: no reasigna teclas dentro de ventanas que sí los tienen (Administrador de tareas, instaladores). Instalado, inicia con ellos.
 	Start with Windows	Iniciar con Windows
@@ -50,7 +59,7 @@
 	Cancel	Cancelar
 	Now press the key or shortcut it should send instead.	Ahora presiona la tecla o combinación que debe enviar en su lugar.
 	Press the key or shortcut you want to change.	Presiona la tecla o combinación que quieres cambiar.
-	For a shortcut, hold Ctrl, Shift, Alt or Win and press the key. Meanwhile, the keyboard doesn't type into other apps.	Para una combinación, mantén Ctrl, Shift, Alt o Win y presiona la tecla. Mientras tanto, el teclado no escribe en otras apps.
+	For a shortcut, hold a modifier ({modifiers}) and press the key. Meanwhile, the keyboard doesn't type into other apps.	Para una combinación, mantén un modificador ({modifiers}) y presiona la tecla. Mientras tanto, el teclado no escribe en otras apps.
 	No keys remapped yet	Todavía no reasignaste ninguna tecla
 	For example, turn Caps Lock into Esc. Press the button, then the two keys.	Por ejemplo, convierte Bloq Mayús en Esc. Presiona el botón y luego las dos teclas.
 	Add my first mapping	Agregar mi primer mapeo

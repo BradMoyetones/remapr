@@ -27,6 +27,13 @@ pub fn config_dir() -> Option<PathBuf> {
     xdg.or_else(|| home().map(|home| home.join(".config")))
 }
 
+/// macOS: opens System Settings › Privacy & Security at `pane` (`Privacy_Accessibility`).
+pub fn open_privacy_settings(pane: &str) {
+    if cfg!(target_os = "macos") {
+        open_in_browser(&format!("x-apple.systempreferences:com.apple.preference.security?{pane}"));
+    }
+}
+
 /// Opens `url` in the default browser.
 pub fn open_in_browser(url: &str) {
     let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
