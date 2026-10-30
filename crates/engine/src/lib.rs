@@ -3,29 +3,32 @@
 //! sees it as a [`remapr_core::Backend`].
 //!
 //! The backends' tables and rules are plain Rust, compiled and tested on every system; only the
-//! hooks themselves need their system. Windows is the only backend so far: elsewhere [`start`]
-//! fails with `io::ErrorKind::Unsupported`, and [`capabilities`] says so, until Phases 10 and 11
-//! bring macOS and Linux.
+//! hooks themselves need their system. Windows and macOS have one; on Linux [`start`] fails with
+//! `io::ErrorKind::Unsupported`, and [`capabilities`] says so, until Phase 11.
 
 use std::io;
 
 use remapr_core::{Backend, Capabilities, Key};
 
-// Only the Windows hook uses most of it; its tests run everywhere.
+// Only each system's hook uses most of its module; the tests run everywhere.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod macos;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod windows;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 mod unsupported;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+use macos as backend;
+#[cfg(not(any(windows, target_os = "macos")))]
 use unsupported as backend;
 #[cfg(windows)]
 use windows as backend;
 
 /// What this system's backend can do, started or not.
 pub fn capabilities() -> Capabilities {
-    backend::CAPABILITIES
+    backend::capabilities()
 }
 
 /// Starts this system's backend. `wake` runs on the backend's own thread whenever it has events,

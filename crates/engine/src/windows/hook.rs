@@ -153,6 +153,8 @@ impl Backend for Engine {
             Command::SetEnabled(enabled) => ENABLED.store(enabled, Relaxed),
             Command::StartCapture => self.start_capture(),
             Command::CancelCapture => self.cancel_capture(),
+            // Windows asks for nothing: elevation comes from the installer's sign-in task.
+            Command::AskPermission(_) => {}
         }
     }
 

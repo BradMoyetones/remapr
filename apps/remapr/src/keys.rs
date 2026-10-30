@@ -23,6 +23,11 @@ pub fn chord_name(chord: Chord) -> Vec<Cow<'static, str>> {
     mods.chain(std::iter::once(key_name(chord.key))).collect()
 }
 
+/// This system's modifiers, for messages: `Ctrl, Shift, Alt, Win`.
+pub fn modifier_names() -> String {
+    MODS.map(|(_, name)| name).join(", ")
+}
+
 /// `Ctrl + Shift + T`, for messages.
 pub fn chord_text(chord: Chord) -> String {
     chord_name(chord).join(" + ")

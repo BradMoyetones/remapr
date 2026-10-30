@@ -16,6 +16,9 @@ pub enum Command {
     /// it as [`Event::Captured`].
     StartCapture,
     CancelCapture,
+    /// Asks the system for a permission the backend needs: it shows its own prompt, where it has
+    /// one. Granting it arrives as [`Event::CapabilitiesChanged`].
+    AskPermission(Permission),
 }
 
 /// What a backend reports.
@@ -25,6 +28,9 @@ pub enum Event {
     Captured(Chord),
     /// What the backend can do changed: a permission was granted or taken back.
     CapabilitiesChanged(Capabilities),
+    /// The system keeps keys from the backend for now (`true`), or gives them back: macOS does
+    /// while a password field has Secure Input on.
+    Blocked(bool),
     /// The backend stopped on its own and remaps nothing more; the system's words.
     Stopped(String),
 }

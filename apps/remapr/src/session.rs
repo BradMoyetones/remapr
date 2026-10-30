@@ -5,7 +5,7 @@
 
 use std::io;
 
-use remapr_core::{AppMatcher, Backend, Capabilities, Chord, Command, Event, Support};
+use remapr_core::{AppMatcher, Backend, Capabilities, Chord, Command, Event, Permission, Support};
 use remapr_ui::Tone;
 
 use crate::config::{Config, Mapping};
@@ -46,6 +46,8 @@ pub struct Session {
     status: Option<(Tone, String)>,
     capture: Capture,
     pub notice: Option<Notice>,
+    /// The system keeps keys from the engine for now (macOS's Secure Input).
+    blocked: bool,
     /// The settings changed since the window last saved them.
     unsaved: bool,
 }
@@ -57,14 +59,22 @@ impl Session {
         let (engine, status) = match engine {
             Ok(engine) => (Some(engine), None),
             Err(e) if e.kind() == io::ErrorKind::Unsupported => {
-                let text = tr!("Remapr can't remap keys on this system yet: for now it only works on Windows.");
+                let text = tr!("Remapr can't remap keys on this system yet: for now it works on Windows and macOS.");
                 (None, Some((Tone::Info, text.to_owned())))
             }
             Err(e) => (None, Some((Tone::Danger, tr!("Couldn't start the keyboard engine: {error}", error = e)))),
         };
         let capabilities = engine.as_ref().map_or(capabilities, |e| e.capabilities());
-        let mut session =
-            Self { config, engine, capabilities, status, capture: Capture::Idle, notice: None, unsaved: false };
+        let mut session = Self {
+            config,
+            engine,
+            capabilities,
+            status,
+            capture: Capture::Idle,
+            notice: None,
+            blocked: false,
+            unsaved: false,
+        };
         session.sync();
         session
     }
@@ -81,6 +91,21 @@ impl Session {
     /// Whether a backend is running: keys are remapped, unless paused.
     pub fn is_running(&self) -> bool {
         self.engine.is_some()
+    }
+
+    /// What the engine can do now.
+    pub fn capabilities(&self) -> Capabilities {
+        self.capabilities
+    }
+
+    /// Whether the system keeps keys from the engine for now (a password field has Secure Input on).
+    pub fn blocked(&self) -> bool {
+        self.blocked
+    }
+
+    /// Asks the system for a permission the engine needs; granting it arrives as new capabilities.
+    pub fn ask_permission(&mut self, permission: Permission) {
+        self.send(Command::AskPermission(permission));
     }
 
     /// Whether a mapping can be added by pressing keys.
@@ -124,6 +149,7 @@ impl Session {
             match event {
                 Event::Captured(chord) => self.on_captured(chord),
                 Event::CapabilitiesChanged(capabilities) => self.capabilities = capabilities,
+                Event::Blocked(blocked) => self.blocked = blocked,
                 Event::Stopped(why) => {
                     log::error!("the engine stopped: {why}");
                     self.engine = None;
@@ -423,6 +449,22 @@ mod tests {
         assert_eq!(s.capture(), Capture::Idle);
         assert!(!s.is_running() && !s.can_capture());
         assert_eq!(s.status().map(|(tone, _)| *tone), Some(Tone::Danger));
+    }
+
+    #[test]
+    fn a_permission_is_asked_of_the_engine_and_granting_it_lets_keys_be_captured() {
+        let fake = Fake::default();
+        let waiting = Capabilities { keyboard: Support::NeedsPermission(Permission::Accessibility), ..ALL };
+        let mut s = Session::new(Config::default(), Ok(Box::new(fake.clone())), ALL);
+        fake.report(Event::CapabilitiesChanged(waiting));
+        s.poll();
+        assert!(!s.can_capture());
+        s.ask_permission(Permission::Accessibility);
+        assert_eq!(fake.told(), [Command::AskPermission(Permission::Accessibility)]);
+        fake.report(Event::CapabilitiesChanged(ALL));
+        fake.report(Event::Blocked(true));
+        s.poll();
+        assert!(s.can_capture() && s.blocked());
     }
 
     #[test]
