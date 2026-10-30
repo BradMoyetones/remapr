@@ -9,8 +9,8 @@ Written on 2026-10-29, at version 0.4.0. Update it when a phase changes the pict
 
 ## Where Remapr is going
 
-Remapr starts as a keyboard remapper for Windows. One working release at a time, it grows into an
-open-source input remapper for Windows, macOS and Linux in the spirit of reWASD: keyboard, mouse,
+Remapr starts as a keyboard remapper for Windows. One working release at a time, it grows into a
+complete, high-end, open-source input remapper for Windows, macOS and Linux: keyboard, mouse,
 macros, physical controllers and, where the system allows it, virtual controllers.
 
 Three things don't change along the way:
@@ -136,10 +136,10 @@ as a target and "hide the physical controller" are locked.
    - The title bar follows ArtCraft's rule. Windows and macOS keep the system's frame; on macOS
      the header runs under it, transparent. Linux keeps the desktop's frame, except on GNOME
      Wayland, which draws none.
-7. **reWASD is studied, never reverse-engineered.**
-   - On Windows, we look at its public interface and features and describe them in our own words
-     in `docs/research/rewasd.md`. Screenshots stay private, and none of its text, icons or
-     binaries come into the repository.
+7. **Remapr is written from scratch.**
+   - Its features are the ones people expect from an input remapper, designed and written anew in
+     Rust. No other product's code, binaries, text or art goes into Remapr, and none is
+     reverse-engineered.
    - kanata is LGPL-3.0: read it for ideas, don't copy its code into an MIT project.
 
 ## Patterns taken from ArtCraft
@@ -171,7 +171,7 @@ These are read from the repositories of [storytold](https://github.com/storytold
   Then the mouse and macros arrive on all three systems.
 - **Long term: controllers (Phases 14 and 15, and beyond).** First physical controllers to
   keyboard and mouse, on all three systems. Then virtual controllers, starting with Linux, where
-  no driver is needed. After that, toward what reWASD offers: profiles per device, combos, gyro
+  no driver is needed. After that, toward a complete controller remapper: profiles per device, combos, gyro
   to mouse, rumble, shared profiles, and a `remapr-cli` to switch profiles from scripts.
 
 ## Rules for every phase
@@ -189,9 +189,8 @@ These are read from the repositories of [storytold](https://github.com/storytold
 
 - **On the Mac:** Phases 7 to 10 and 12, and all the UI work. CI on Windows catches regressions
   while refactoring from the Mac.
-- **On Windows:** every refactor is checked with a real keyboard before merging, above all Phase
-  8, which migrates users' settings. The reWASD study happens there, and later the Windows
-  controller work.
+- **On Windows:** every refactor is checked with a real keyboard, and the Windows controller work
+  happens there.
 
 ## Sources
 

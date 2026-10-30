@@ -1,7 +1,7 @@
 # Remapr: notes for contributors and agents
 
-Key remapper in pure Rust (eframe/egui 0.37, windows-sys). It remaps on Windows; it builds, lints
-and tests on macOS and Linux too, which get their backends in later phases. See README.md for the
+Open-source input remapper in pure Rust (eframe/egui 0.37, windows-sys). It remaps keys on Windows
+today; it builds, lints and tests on macOS and Linux too, which get their backends in later phases. See README.md for the
 layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they build toward.
 
 ## Rules

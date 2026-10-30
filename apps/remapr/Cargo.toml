@@ -1,6 +1,6 @@
 [package]
 name = "remapr"
-description = "Fast, native key remapper for Windows"
+description = "Open-source input remapper for Windows, macOS and Linux, written in Rust"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

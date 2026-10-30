@@ -155,7 +155,6 @@ features.
 - A live view of the controller (Xbox, DualSense, Switch Pro) drawn in egui. A button is mapped
   by pressing it, like a key.
 - Sticks to mouse, with dead zones and response curves.
-- Shaped by the study of reWASD's features (`docs/research/rewasd.md`, see the vision).
 
 ## Phase 15: Virtual controllers
 
