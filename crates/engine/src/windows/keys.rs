@@ -70,9 +70,8 @@ const CHARS: &[(u16, Key)] = &[
     (0x7D, Key::IntlYen),
 ];
 
-/// The virtual-key codes of keys that type characters, on a US layout. Only for when the layout in
-/// use can't be asked (other systems, or a code with no scan code), and to read settings from
-/// before Remapr knew positions.
+/// The virtual-key codes of keys that type characters, on a US layout: what a code with no scan
+/// code (another program's synthetic input) means.
 const US_CHARS: &[(u8, Key)] = &[
     (0xBA, Key::Semicolon),
     (0xBB, Key::Equal),
@@ -244,15 +243,6 @@ pub fn vk_of(key: Key) -> Option<(u8, Option<bool>)> {
     FIXED.iter().find(|&&(_, _, k)| k == key).map(|&(v, e, _)| (v, e))
 }
 
-/// The key a setting from Remapr 0.5 or earlier, which stored virtual-key codes, meant, read as a
-/// US layout would. Navigation codes meant the navigation keys, not the numpad's.
-pub fn key_of_old_vk(vk: u8) -> Option<Key> {
-    if is_layout_vk(vk) {
-        return us_char_key(vk);
-    }
-    fixed_key(vk, vk != VK_RETURN).or_else(|| fixed_key(vk, false))
-}
-
 /// The fake Left Ctrl that AltGr layouts send with Right Alt.
 pub fn is_altgr_phantom(vk: u8, scan: u32) -> bool {
     vk == VK_LCONTROL && scan == ALTGR_FAKE_CTRL_SCAN
@@ -294,20 +284,6 @@ mod tests {
         assert_eq!(key_of(VK_NUMLOCK, 0x45, true), Some(Key::NumLock));
         assert_eq!(key_of(0xB3, 0x22, true), Some(Key::MediaPlayPause));
         assert_eq!(key_of(0xE7, 0, false), None, "VK_PACKET");
-    }
-
-    #[test]
-    fn old_settings_read_as_us_keys() {
-        assert_eq!(key_of_old_vk(0x14), Some(Key::CapsLock));
-        assert_eq!(key_of_old_vk(0x1B), Some(Key::Escape));
-        assert_eq!(key_of_old_vk(b'T'), Some(Key::KeyT));
-        assert_eq!(key_of_old_vk(b'7'), Some(Key::Digit7));
-        assert_eq!(key_of_old_vk(0xBA), Some(Key::Semicolon));
-        assert_eq!(key_of_old_vk(0x25), Some(Key::ArrowLeft));
-        assert_eq!(key_of_old_vk(VK_RETURN), Some(Key::Enter));
-        assert_eq!(key_of_old_vk(0x0C), Some(Key::Numpad5));
-        assert_eq!(key_of_old_vk(0xA5), Some(Key::AltRight));
-        assert_eq!(key_of_old_vk(0x00), None);
     }
 
     #[test]

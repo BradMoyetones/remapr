@@ -15,4 +15,4 @@ mod layout;
 #[cfg(windows)]
 pub use hook::Engine;
 #[cfg(windows)]
-pub use layout::{key_from_vk, layout_char};
+pub use layout::layout_char;

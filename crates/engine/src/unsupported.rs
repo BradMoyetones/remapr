@@ -37,8 +37,3 @@ impl Engine {
 pub fn layout_char(_key: Key) -> Option<char> {
     None
 }
-
-/// No layout to ask here: the key a US layout gives `vk`.
-pub fn key_from_vk(vk: u8) -> Option<Key> {
-    crate::us_key_from_vk(vk)
-}

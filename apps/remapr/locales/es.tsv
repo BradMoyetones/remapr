@@ -90,7 +90,6 @@
 	Remapr: paused	Remapr: en pausa
 	Couldn't read the settings: {error}	No se pudo leer la configuración: {error}
 	The settings were damaged. A copy was saved as {file}	La configuración estaba dañada. Se guardó una copia en {file}
-	{count} couldn't be brought to this version and were left out. The old settings are in {file}	{count} no se pudieron pasar a esta versión y quedaron fuera. La configuración anterior está en {file}
 	The settings are from a newer Remapr. A copy was kept as {file}	La configuración es de un Remapr más nuevo. Se guardó una copia como {file}
 	Remapr: exported mappings. Import them from Remapr's ⋯ menu.	Remapr: mapeos exportados. Impórtalos desde el menú ⋯ de Remapr.
 	The file is too big to be a Remapr export.	El archivo es demasiado grande para ser una exportación de Remapr.
