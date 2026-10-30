@@ -20,9 +20,11 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      # Formatting is the same everywhere: once is enough.
+      # Formatting and layering are the same everywhere: once is enough.
       - if: runner.os == 'Linux'
         run: cargo fmt --all --check
+      - if: runner.os == 'Linux'
+        run: cargo xtask layers
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - name: Build the installer

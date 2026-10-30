@@ -4,6 +4,9 @@
 //!   and commit the results; the app build only embeds them.
 //! - `dist`: builds the release executable and the installer, `target/dist/Remapr-<version>-x64.msi`,
 //!   with its SHA-256 beside it. Fetches WiX on first use; needs the .NET runtime (6 or newer).
+//! - `layers`: fails when a crate depends on one it shouldn't (see [`layers`]). CI runs it.
+
+mod layers;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -41,7 +44,8 @@ fn main() -> Result<(), String> {
     match std::env::args().nth(1).as_deref() {
         Some("icons") => icons(),
         Some("dist") => dist(),
-        _ => Err("usage: cargo xtask <icons|dist>".into()),
+        Some("layers") => layers::run(&root()),
+        _ => Err("usage: cargo xtask <icons|dist|layers>".into()),
     }
 }
 
