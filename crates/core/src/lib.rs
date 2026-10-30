@@ -8,12 +8,14 @@
 
 #![forbid(unsafe_code)]
 
+mod capture;
 mod chord;
 mod key;
 mod protocol;
 mod remap;
 mod rule;
 
+pub use capture::Capture;
 pub use chord::{Chord, Mods};
 pub use key::{Key, UnknownName};
 pub use protocol::{Backend, Capabilities, Command, Driver, Event, Permission, Support};
