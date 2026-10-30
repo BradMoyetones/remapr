@@ -90,9 +90,12 @@
 	Remapr: paused	Remapr: en pausa
 	Couldn't read the settings: {error}	No se pudo leer la configuración: {error}
 	The settings were damaged. A copy was saved as {file}	La configuración estaba dañada. Se guardó una copia en {file}
+	{count} couldn't be brought to this version and were left out. The old settings are in {file}	{count} no se pudieron pasar a esta versión y quedaron fuera. La configuración anterior está en {file}
+	The settings are from a newer Remapr. A copy was kept as {file}	La configuración es de un Remapr más nuevo. Se guardó una copia como {file}
 	Remapr: exported mappings. Import them from Remapr's ⋯ menu.	Remapr: mapeos exportados. Impórtalos desde el menú ⋯ de Remapr.
 	The file is too big to be a Remapr export.	El archivo es demasiado grande para ser una exportación de Remapr.
 	The file isn't a Remapr export.	El archivo no es una exportación de Remapr.
+	The file is from a newer Remapr.	El archivo es de un Remapr más nuevo.
 	The file has no usable mappings.	El archivo no tiene mapeos que se puedan usar.
 	Key {code}	Tecla {code}
 key	Backspace	Retroceso
@@ -125,3 +128,18 @@ key	Next track	Siguiente
 key	Previous track	Anterior
 key	Stop	Detener
 key	Play/Pause	Reproducir
+key	Left Super	Super izq.
+key	Right Super	Super der.
+key	Power	Encendido
+key	Help	Ayuda
+key	Undo	Deshacer
+key	Cut	Cortar
+key	Copy	Copiar
+key	Paste	Pegar
+key	Find	Buscar
+key	Media	Multimedia
+key	Mail	Correo
+key	Stop loading	Detener carga
+key	Search	Búsqueda
+key	Favorites	Favoritos
+key	Home page	Página de inicio

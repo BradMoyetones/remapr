@@ -12,6 +12,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+remapr-core = { workspace = true, features = ["serde"] }
 remapr-engine = { workspace = true }
 remapr-platform = { workspace = true }
 remapr-ui = { workspace = true }

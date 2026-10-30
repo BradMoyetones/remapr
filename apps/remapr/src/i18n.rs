@@ -152,17 +152,32 @@ mod tests {
     /// placeholders, and no catalog line is malformed: a missing one would quietly show English.
     #[test]
     fn catalogs_cover_the_code() {
-        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        fn rust_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, files);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    files.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        rust_files(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
         let mut wanted = Vec::new();
-        for file in std::fs::read_dir(&src).unwrap() {
-            let path = file.unwrap().path();
+        for path in files {
             // This module's docs show the macros with made-up text.
             if path.ends_with("i18n.rs") {
                 continue;
             }
             let code = std::fs::read_to_string(path).unwrap();
             for (macro_name, context) in [("tr!(\"", ""), ("trn!(\"", "@plural"), ("key!(\"", "key")] {
-                for part in code.split(macro_name).skip(1) {
+                for (at, _) in code.match_indices(macro_name) {
+                    // Not the end of a longer name: `include_str!("` isn't `tr!("`.
+                    if code[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+                        continue;
+                    }
+                    let part = &code[at + macro_name.len()..];
                     let english = &part[..part.find('"').unwrap()];
                     if !english.is_empty() {
                         wanted.push((context, english.to_owned()));

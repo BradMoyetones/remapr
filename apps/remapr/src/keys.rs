@@ -1,16 +1,25 @@
 //! Human names for keys, as printed on a keyboard. English here; each catalog names them as that
-//! language's keyboards print them (context `key`).
+//! language's keyboards print them (context `key`). Keys that type a character show what the
+//! layout in use types there, so `Semicolon` is Ñ on Spanish.
 
 use std::borrow::Cow;
 
-use remapr_engine::{Chord, Mods, Vk};
+use remapr_core::{Chord, Key, Mods};
 
 use crate::i18n::{key, tr};
 
+/// Each modifier as this system's keyboards print it: Win, ⌘ or Super for Meta.
+const MODS: [(Mods, &str); 4] = if cfg!(target_os = "macos") {
+    [(Mods::CTRL, "⌃"), (Mods::SHIFT, "⇧"), (Mods::ALT, "⌥"), (Mods::META, "⌘")]
+} else if cfg!(target_os = "windows") {
+    [(Mods::CTRL, "Ctrl"), (Mods::SHIFT, "Shift"), (Mods::ALT, "Alt"), (Mods::META, "Win")]
+} else {
+    [(Mods::CTRL, "Ctrl"), (Mods::SHIFT, "Shift"), (Mods::ALT, "Alt"), (Mods::META, "Super")]
+};
+
 /// The names of a chord's keys, modifiers first: `["Ctrl", "Shift", "T"]`. One keycap each.
 pub fn chord_name(chord: Chord) -> Vec<Cow<'static, str>> {
-    let mods = [(Mods::CTRL, "Ctrl"), (Mods::SHIFT, "Shift"), (Mods::ALT, "Alt"), (Mods::WIN, "Win")];
-    let mods = mods.into_iter().filter(|&(m, _)| chord.mods.contains(m)).map(|(_, name)| Cow::Borrowed(name));
+    let mods = MODS.into_iter().filter(|&(m, _)| chord.mods.contains(m)).map(|(_, name)| Cow::Borrowed(name));
     mods.chain(std::iter::once(key_name(chord.key))).collect()
 }
 
@@ -19,69 +28,102 @@ pub fn chord_text(chord: Chord) -> String {
     chord_name(chord).join(" + ")
 }
 
-pub fn key_name(vk: Vk) -> Cow<'static, str> {
-    let fixed = match vk {
-        0x08 => key!("Backspace"),
-        0x09 => "Tab",
-        0x0D => "Enter",
-        0x10 => "Shift",
-        0x11 => "Ctrl",
-        0x12 => "Alt",
-        0x13 => key!("Pause"),
-        0x14 => key!("Caps Lock"),
-        0x1B => "Esc",
-        0x20 => key!("Space"),
-        0x21 => key!("Page Up"),
-        0x22 => key!("Page Down"),
-        0x23 => key!("End"),
-        0x24 => key!("Home"),
-        0x25 => "←",
-        0x26 => "↑",
-        0x27 => "→",
-        0x28 => "↓",
-        0x2C => key!("Print Screen"),
-        0x2D => "Insert",
-        0x2E => key!("Delete"),
-        0x5B => key!("Left Win"),
-        0x5C => key!("Right Win"),
-        0x5D => key!("Menu"),
-        0x6A => "Num *",
-        0x6B => "Num +",
-        0x6D => "Num −",
-        0x6E => "Num .",
-        0x6F => "Num /",
-        0x90 => key!("Num Lock"),
-        0x91 => key!("Scroll Lock"),
-        0xA0 => key!("Left Shift"),
-        0xA1 => key!("Right Shift"),
-        0xA2 => key!("Left Ctrl"),
-        0xA3 => key!("Right Ctrl"),
-        0xA4 => "Alt",
-        0xA5 => key!("Right Alt"),
-        0xA6 => key!("Back"),
-        0xA7 => key!("Forward"),
-        0xA8 => key!("Refresh"),
-        0xAD => key!("Mute"),
-        0xAE => key!("Volume −"),
-        0xAF => key!("Volume +"),
-        0xB0 => key!("Next track"),
-        0xB1 => key!("Previous track"),
-        0xB2 => key!("Stop"),
-        0xB3 => key!("Play/Pause"),
-        _ => "",
+pub fn key_name(key: Key) -> Cow<'static, str> {
+    if let Some(name) = fixed_name(key) {
+        return name.into();
+    }
+    if let Some(n) = key.function_number() {
+        return format!("F{n}").into();
+    }
+    if let Some(d) = key.numpad_digit() {
+        return format!("Num {d}").into();
+    }
+    // A key that types a character: what the layout in use types there.
+    match remapr_engine::layout_char(key).or(key.us_char()) {
+        Some(c) => c.to_uppercase().to_string().into(),
+        None => tr!("Key {code}", code = key.name()).into(),
+    }
+}
+
+/// The names of keys that don't type a character, where this system's keyboards name them.
+fn fixed_name(key: Key) -> Option<&'static str> {
+    let (left_meta, right_meta) = if cfg!(target_os = "macos") {
+        ("Left ⌘", "Right ⌘")
+    } else if cfg!(target_os = "windows") {
+        (key!("Left Win"), key!("Right Win"))
+    } else {
+        (key!("Left Super"), key!("Right Super"))
     };
-    if !fixed.is_empty() {
-        return fixed.into();
-    }
-    match vk {
-        b'0'..=b'9' | b'A'..=b'Z' => char::from(vk).to_string().into(),
-        0x60..=0x69 => format!("Num {}", vk - 0x60).into(),
-        0x70..=0x87 => format!("F{}", vk - 0x6F).into(),
-        // OEM keys depend on the layout: ask Windows what this one types.
-        _ => remapr_engine::layout_char(vk)
-            .map(|c| c.to_uppercase().to_string().into())
-            .unwrap_or_else(|| tr!("Key {code}", code = format!("{vk:#04X}")).into()),
-    }
+    Some(match key {
+        Key::Backspace => key!("Backspace"),
+        Key::Tab => "Tab",
+        Key::Enter => "Enter",
+        Key::NumpadEnter => "Num Enter",
+        Key::Escape => "Esc",
+        Key::Space => key!("Space"),
+        Key::CapsLock => key!("Caps Lock"),
+        Key::PrintScreen => key!("Print Screen"),
+        Key::ScrollLock => key!("Scroll Lock"),
+        Key::Pause => key!("Pause"),
+        Key::Insert => "Insert",
+        Key::Delete => key!("Delete"),
+        Key::Home => key!("Home"),
+        Key::End => key!("End"),
+        Key::PageUp => key!("Page Up"),
+        Key::PageDown => key!("Page Down"),
+        Key::ArrowLeft => "←",
+        Key::ArrowUp => "↑",
+        Key::ArrowRight => "→",
+        Key::ArrowDown => "↓",
+        Key::NumLock => key!("Num Lock"),
+        Key::NumpadDivide => "Num /",
+        Key::NumpadMultiply => "Num *",
+        Key::NumpadSubtract => "Num −",
+        Key::NumpadAdd => "Num +",
+        Key::NumpadDecimal => "Num .",
+        Key::NumpadEqual => "Num =",
+        Key::NumpadComma => "Num ,",
+        Key::ContextMenu => key!("Menu"),
+        Key::Power => key!("Power"),
+        Key::Help => key!("Help"),
+        Key::Undo => key!("Undo"),
+        Key::Cut => key!("Cut"),
+        Key::Copy => key!("Copy"),
+        Key::Paste => key!("Paste"),
+        Key::Find => key!("Find"),
+        Key::KanaMode => "Kana",
+        Key::Convert => "Convert",
+        Key::NonConvert => "Non-convert",
+        Key::Lang1 => "Lang 1",
+        Key::Lang2 => "Lang 2",
+        Key::ControlLeft => key!("Left Ctrl"),
+        Key::ControlRight => key!("Right Ctrl"),
+        Key::ShiftLeft => key!("Left Shift"),
+        Key::ShiftRight => key!("Right Shift"),
+        Key::AltLeft => "Alt",
+        Key::AltRight => key!("Right Alt"),
+        Key::MetaLeft => left_meta,
+        Key::MetaRight => right_meta,
+        Key::AudioVolumeMute => key!("Mute"),
+        Key::AudioVolumeDown => key!("Volume −"),
+        Key::AudioVolumeUp => key!("Volume +"),
+        Key::MediaTrackNext => key!("Next track"),
+        Key::MediaTrackPrevious => key!("Previous track"),
+        Key::MediaStop => key!("Stop"),
+        Key::MediaPlayPause => key!("Play/Pause"),
+        Key::MediaSelect => key!("Media"),
+        Key::LaunchMail => key!("Mail"),
+        Key::LaunchApp1 => "App 1",
+        Key::LaunchApp2 => "App 2",
+        Key::BrowserBack => key!("Back"),
+        Key::BrowserForward => key!("Forward"),
+        Key::BrowserRefresh => key!("Refresh"),
+        Key::BrowserStop => key!("Stop loading"),
+        Key::BrowserSearch => key!("Search"),
+        Key::BrowserFavorites => key!("Favorites"),
+        Key::BrowserHome => key!("Home page"),
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -90,12 +132,21 @@ mod tests {
 
     #[test]
     fn names_common_keys() {
-        assert_eq!(key_name(0x14), key!("Caps Lock"));
-        assert_eq!(key_name(b'Q'), "Q");
-        assert_eq!(key_name(0x7B), "F12");
-        assert_eq!(key_name(0x87), "F24");
-        assert_eq!(key_name(0x65), "Num 5");
-        let chord = Chord { mods: Mods::CTRL | Mods::SHIFT, key: b'T' };
-        assert_eq!(chord_text(chord), "Ctrl + Shift + T");
+        assert_eq!(key_name(Key::CapsLock), key!("Caps Lock"));
+        assert_eq!(key_name(Key::F12), "F12");
+        assert_eq!(key_name(Key::F24), "F24");
+        assert_eq!(key_name(Key::Numpad5), "Num 5");
+        assert_eq!(key_name(Key::NumpadEnter), "Num Enter");
+        // The character a key types depends on the layout; the US one where none can be asked.
+        assert!(!key_name(Key::KeyQ).is_empty());
+        let chord = Chord { mods: Mods::CTRL | Mods::SHIFT, key: Key::F5 };
+        assert_eq!(chord_text(chord), "Ctrl + Shift + F5".replace("Ctrl", MODS[0].1).replace("Shift", MODS[1].1));
+    }
+
+    #[test]
+    fn every_key_has_a_name() {
+        for &k in Key::ALL {
+            assert!(!key_name(k).is_empty(), "{k}");
+        }
     }
 }

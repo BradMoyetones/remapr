@@ -7,7 +7,8 @@ use eframe::egui::{
     self, Align, Frame, Layout, Margin, Rect, RichText, Sense, ThemePreference, ViewportCommand, pos2, vec2,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use remapr_engine::{Chord, Engine};
+use remapr_core::{AppMatcher, Chord};
+use remapr_engine::Engine;
 use remapr_platform::{SingleInstance, TitleBarDoubleClick, startup};
 use remapr_ui::{
     KeyState, Palette, Tone, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button,
@@ -275,14 +276,14 @@ impl App {
     }
 
     fn add(&mut self, mapping: Mapping) {
-        let (from, to) = (chord_text(mapping.source()), chord_text(mapping.target()));
-        if mapping.source() == mapping.target() {
+        let (from, to) = (chord_text(mapping.from), chord_text(mapping.to));
+        if mapping.from == mapping.to {
             let text = tr!("You chose {keys} twice, so nothing changed.", keys = from);
             self.notice = Some(Notice { text, undo: None, link: None });
             return;
         }
         if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
-            (existing.to, existing.to_mods) = (mapping.to, mapping.to_mods);
+            existing.to = mapping.to;
             let text = tr!("{from} was already remapped. It now sends {to}.", from = from, to = to);
             self.notice = Some(Notice { text, undo: None, link: None });
         } else {
@@ -293,7 +294,7 @@ impl App {
 
     fn remove(&mut self, index: usize) {
         let m = self.config.mappings.remove(index);
-        let text = tr!("Removed {from} → {to}.", from = chord_text(m.source()), to = chord_text(m.target()));
+        let text = tr!("Removed {from} → {to}.", from = chord_text(m.from), to = chord_text(m.to));
         self.notice = Some(Notice { text, undo: Some((index, m)), link: None });
         self.commit();
     }
@@ -351,7 +352,7 @@ impl App {
     }
 
     /// Limits mapping `index` to `app`, or lets it apply everywhere with `None`.
-    fn set_app(&mut self, index: usize, app: Option<String>) {
+    fn set_app(&mut self, index: usize, app: Option<AppMatcher>) {
         let mut moved = self.config.mappings[index].clone();
         moved.app = app;
         // Another mapping of the same keys already there: this one replaces it.
@@ -538,14 +539,14 @@ impl App {
                 card(ui, false, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
-                        chord_caps(ui, m.source(), KeyState::Idle);
+                        chord_caps(ui, m.from, KeyState::Idle);
                         icon_label(ui, icon::FORWARD, 16.0, p.muted);
-                        chord_caps(ui, m.target(), KeyState::Idle);
+                        chord_caps(ui, m.to, KeyState::Idle);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if danger_icon_button(ui, icon::DELETE, tr!("Remove this mapping")).clicked() {
                                 remove = Some(i);
                             }
-                            if let Some(app) = app_picker(ui, m.app.as_deref()) {
+                            if let Some(app) = app_picker(ui, m.app.as_ref()) {
                                 set_app = Some((i, app));
                             }
                         });
@@ -729,9 +730,9 @@ fn chord_caps(ui: &mut egui::Ui, chord: Chord, state: KeyState) {
 
 /// Where a mapping applies: every app, or one program picked from those with a window open.
 /// Returns the new choice when the user makes one.
-fn app_picker(ui: &mut egui::Ui, current: Option<&str>) -> Option<Option<String>> {
+fn app_picker(ui: &mut egui::Ui, current: Option<&AppMatcher>) -> Option<Option<AppMatcher>> {
     let p = Palette::of(ui);
-    let label = current.map_or(tr!("All apps").to_owned(), |exe| tr!("Only in {app}", app = exe));
+    let label = current.map_or(tr!("All apps").to_owned(), |app| tr!("Only in {app}", app = app.name()));
     let mut picked = None;
     ui.menu_button(RichText::new(label).small().color(if current.is_some() { p.accent } else { p.muted }), |ui| {
         ui.set_max_width(320.0);
@@ -742,17 +743,18 @@ fn app_picker(ui: &mut egui::Ui, current: Option<&str>) -> Option<Option<String>
         ui.label(RichText::new(tr!("Only while this app is in front:")).small().color(p.muted));
         let apps = remapr_platform::running_apps();
         // Keep the current app listed even when it isn't open right now.
-        let missing = current.filter(|exe| apps.iter().all(|a| a.exe != *exe));
-        if let Some(exe) = missing
-            && ui.selectable_label(true, exe).clicked()
+        let is_current = |exe: &str| current.is_some_and(|c| c.matches(remapr_core::App::Exe(exe)));
+        let missing = current.filter(|_| !apps.iter().any(|a| is_current(&a.exe)));
+        if let Some(app) = missing
+            && ui.selectable_label(true, app.name()).clicked()
         {
-            picked = Some(Some(exe.to_owned()));
+            picked = Some(Some(app.clone()));
         }
         egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
             for app in &apps {
                 let text = RichText::new(format!("{}  ·  {}", app.exe, truncate(&app.title, 32)));
-                if ui.selectable_label(current == Some(app.exe.as_str()), text).clicked() {
-                    picked = Some(Some(app.exe.clone()));
+                if ui.selectable_label(is_current(&app.exe), text).clicked() {
+                    picked = Some(Some(AppMatcher::Exe(app.exe.clone())));
                 }
             }
         });
