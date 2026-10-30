@@ -5,6 +5,7 @@ mod app;
 mod config;
 mod i18n;
 mod keys;
+mod logging;
 mod session;
 mod tray;
 mod updates;
@@ -25,6 +26,8 @@ fn main() -> eframe::Result {
         installer_step(startup::unregister());
     }
     let background = has(startup::BACKGROUND_ARG);
+    logging::init(&config::dir());
+    log::info!("Remapr {} on {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
 
     // One Remapr per session: a second launch shows the running one's window instead.
     let Some(mut instance) = acquire_instance() else { return Ok(()) };
