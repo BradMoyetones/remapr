@@ -68,9 +68,14 @@ impl Updates {
                 std::thread::sleep(Duration::from_secs(5));
                 loop {
                     // A failed background check isn't worth bothering the user: the next one comes later.
-                    if let Ok(Some(release)) = source.check(VERSION) {
-                        let _ = sender.send(Event::Found(release));
-                        ctx.request_repaint();
+                    match source.check(VERSION) {
+                        Ok(Some(release)) => {
+                            log::info!("version {} is out", release.version);
+                            let _ = sender.send(Event::Found(release));
+                            ctx.request_repaint();
+                        }
+                        Ok(None) => {}
+                        Err(e) => log::warn!("update check failed: {e:?}"),
                     }
                     std::thread::sleep(CHECK_EVERY);
                 }
@@ -103,7 +108,10 @@ impl Updates {
             let event = match source.check(VERSION) {
                 Ok(Some(release)) => Event::Found(release),
                 Ok(None) => Event::UpToDate,
-                Err(e) => Event::CheckFailed(describe(&e)),
+                Err(e) => {
+                    log::warn!("update check failed: {e:?}");
+                    Event::CheckFailed(describe(&e))
+                }
             };
             let _ = sender.send(event);
             ctx.request_repaint();
@@ -164,6 +172,7 @@ impl Updates {
                 remapr_update::install_result(installer.wait().ok().and_then(|s| s.code()))
             });
             if let Err(e) = result {
+                log::error!("update to {} failed: {e:?}", release.version);
                 send(Event::Failed(describe(&e)));
             }
         });

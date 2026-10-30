@@ -78,11 +78,15 @@ pub enum Theme {
     Dark,
 }
 
-fn path() -> PathBuf {
+/// Remapr's own settings folder: `config.toml` and `logs/`.
+pub fn dir() -> PathBuf {
     let base = remapr_platform::config_dir().unwrap_or_else(std::env::temp_dir);
     // Debug builds keep their own settings, so trying things never touches the installed copy's.
-    let folder = if cfg!(debug_assertions) { "Remapr-dev" } else { "Remapr" };
-    base.join(folder).join("config.toml")
+    base.join(if cfg!(debug_assertions) { "Remapr-dev" } else { "Remapr" })
+}
+
+fn path() -> PathBuf {
+    dir().join("config.toml")
 }
 
 /// What a settings file turned out to be.
@@ -118,18 +122,23 @@ impl Config {
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return (Self::default(), None),
-            Err(e) => return (Self::default(), Some(tr!("Couldn't read the settings: {error}", error = e))),
+            Err(e) => {
+                log::error!("couldn't read {}: {e}", path.display());
+                return (Self::default(), Some(tr!("Couldn't read the settings: {error}", error = e)));
+            }
         };
         match read(&text) {
             Ok(Read::Current(config)) => (config, None),
             Ok(Read::Newer) => {
+                log::warn!("{} is from a newer Remapr", path.display());
                 let newer = path.with_file_name("config.newer.toml");
                 let _ = std::fs::copy(&path, &newer);
                 let msg =
                     tr!("The settings are from a newer Remapr. A copy was kept as {file}", file = newer.display());
                 (Self::default(), Some(msg))
             }
-            Err(_) => {
+            Err(e) => {
+                log::error!("{} is unreadable: {e}", path.display());
                 let bad = path.with_extension("toml.bad");
                 let _ = std::fs::rename(&path, &bad);
                 let msg = tr!("The settings were damaged. A copy was saved as {file}", file = bad.display());
