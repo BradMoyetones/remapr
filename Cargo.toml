@@ -19,6 +19,7 @@ remapr-ui = { path = "crates/ui" }
 remapr-update = { path = "crates/update" }
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
 egui_extras = { version = "0.37", default-features = false, features = ["svg"] }
+log = "0.4"
 raw-window-handle = "0.6"
 serde = { version = "1", features = ["derive"] }
 toml = "1"

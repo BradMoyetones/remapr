@@ -12,6 +12,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+log = { workspace = true }
 remapr-core = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

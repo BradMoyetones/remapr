@@ -1,36 +1,16 @@
-//! The engine on systems without a backend yet: it never starts, so no `Engine` value exists.
+//! Systems without a backend yet: nothing to start, and their capabilities say so.
 
 use std::io;
 
-use remapr_core::{Chord, Key, Rule};
+use remapr_core::{Backend, Capabilities, Key, Support};
 
-/// Can't be created here: [`Engine::start`] always fails.
-pub enum Engine {}
+/// macOS will never make virtual game controllers (Apple doesn't let apps); everything else comes
+/// with Phases 10 (macOS) and 11 (Linux).
+pub const CAPABILITIES: Capabilities =
+    Capabilities::none(if cfg!(target_os = "macos") { Support::NotOnThisSystem } else { Support::NotYet });
 
-impl Engine {
-    pub fn start(_on_capture: impl Fn() + Send + 'static) -> io::Result<Self> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "remapping isn't available on this system yet"))
-    }
-
-    pub fn set_rules(&self, _rules: Vec<Rule>) {
-        match *self {}
-    }
-
-    pub fn set_enabled(&self, _enabled: bool) {
-        match *self {}
-    }
-
-    pub fn start_capture(&self) {
-        match *self {}
-    }
-
-    pub fn cancel_capture(&self) {
-        match *self {}
-    }
-
-    pub fn captured(&self) -> Option<Chord> {
-        match *self {}
-    }
+pub fn start(_wake: impl Fn() + Send + 'static) -> io::Result<Box<dyn Backend>> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "remapping isn't available on this system yet"))
 }
 
 /// No layout to ask here: callers fall back to [`Key::us_char`].
