@@ -13,9 +13,9 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
   values in files. Never store or compare a system's key codes outside its backend. Each system's
   translation is a plain table in `crates/engine/src/<system>/keys.rs`, tested on every system;
   on Windows, characters go by scan code (position) and other keys by virtual-key code.
-- The settings format has a version (`config::VERSION`). Changing it means a reader for the old
-  version (as `config/v1.rs`), a file as the old version wrote it in `apps/remapr/tests/fixtures`,
-  and a test that converts it. Never edit an existing fixture.
+- The settings format has a version (`config::VERSION`). Changing it means bumping it, a reader
+  for the old version, a file as the old version wrote it in `apps/remapr/tests/fixtures` (never
+  edited afterwards), and a test that converts it. Users' settings are never dropped silently.
 - Code for one system sits in its own `#[cfg]` module (`crates/platform/src/windows/`,
   `crates/platform/src/unix.rs`, the engine's `windows/hook.rs` and `unsupported.rs`), not scattered
   through the app. `remapr-platform`'s `lib.rs` lists every public item once, and each system's

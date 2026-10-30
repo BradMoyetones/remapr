@@ -94,9 +94,9 @@ features.
 - The AltGr phantom Ctrl and the dummy key tapped before releasing Alt or Win move to the Windows
   backend.
 - A per-app rule matches a program file, a macOS bundle id or a Linux window class.
-- Settings and export files carry a version. Files from 0.5 and earlier, with Win32 key numbers,
-  migrate through the layout in use, and the old file is kept as `config.v1.toml`. The migration
-  is tested against files as those versions wrote them.
+- Settings and export files carry a version (2), so later changes to the format can convert the
+  files before them. 0.5's files, with Win32 key numbers, aren't converted: only its author had
+  any. From here on, a format change comes with its conversion.
 
 ## Phase 9: One engine contract
 

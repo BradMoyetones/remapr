@@ -112,7 +112,7 @@ as a target and "hide the physical controller" are locked.
      Windows' virtual-key codes for characters depend on the layout, so its backend reads and
      sends characters by scan code. What a key is called on screen comes from the layout in use.
    - Names keep settings readable by hand and portable between systems. Settings carry a
-     `version`, and files from 0.5 and earlier, with Win32 numbers, migrate.
+     `version` from 0.6 on, and every later change of the format converts the files before it.
 3. **ArtCraft is a reference, not a dependency.**
    - We copy and adapt its patterns and, where useful, its code. Its repositories are Apache-2.0.
      Copied code keeps its license header and attribution, says what was changed (Apache-2.0
