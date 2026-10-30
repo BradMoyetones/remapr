@@ -173,7 +173,8 @@ remapr/
 ├── assets/              Logo (SVG, light and dark) and the generated app icons
 ├── docs/                Vision and research
 ├── crates/
-│   ├── engine/          Global keyboard hook and key injection
+│   ├── core/            Keys, chords, rules and the remap decision, the same on every system
+│   ├── engine/          Each system's keyboard hook and key injection, around core
 │   ├── platform/        OS integration: settings folder, single instance, elevation, sign-in task
 │   ├── ui/              Design system: light/dark tokens, fonts, Kbd, buttons, switch, cards
 │   └── update/          Release check, download, SHA-256 check and install (GitHub Releases)
@@ -184,10 +185,13 @@ remapr/
 
 Apps depend on crates, never the other way around. Each crate has one job:
 
-- **engine** knows nothing about the UI. It installs a `WH_KEYBOARD_LL` hook on a dedicated
-  high-priority thread, swaps keys and shortcuts through `SendInput`, and exposes a small API
-  (`set_rules`, `set_enabled`, `start_capture`). The decision for each key event is plain Rust in `remap.rs`,
-  unit-tested without Windows.
+- **core** is Remapr's model and logic with no OS code: a `Key` is a physical key, by its USB HID
+  usage, named as the W3C `code` values (`CapsLock`, `KeyA`) in settings files; chords, rules, and
+  `decide`, which says what to do with each key event. Tested on every system.
+- **engine** knows nothing about the UI. On Windows it installs a `WH_KEYBOARD_LL` hook on a
+  dedicated high-priority thread, translates Windows' key codes to core's keys
+  (`src/windows/keys.rs`: characters by position, other keys by code), and swaps keys and
+  shortcuts through `SendInput`. Its API is small: `set_rules`, `set_enabled`, `start_capture`.
 - **platform** wraps the few system calls the app needs outside the engine. Every function exists
   on every system: `src/windows/` holds the Win32 code, `src/unix.rs` what macOS and Linux do so
   far, and what a system can't do yet reports itself unsupported. Together with the engine's hook

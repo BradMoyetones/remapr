@@ -105,9 +105,14 @@ as a target and "hide the physical controller" are locked.
 1. **`remapr-core` is its own crate** (Phase 8). The compiler then guarantees it stays pure: its
    `Cargo.toml` has no `windows-sys`. Its tests run on every system, and the UI and settings can
    use its types without pulling in OS code.
-2. **Keys are identified by HID usage and stored by name** (`from = "CapsLock"`). HID usages are
-   the hardware standard every system maps from. Names keep settings readable by hand and
-   portable between systems. Settings get a `version`, and 0.4 files with Win32 numbers migrate.
+2. **Keys are positions, identified by HID usage and stored by name** (`from = "CapsLock"`).
+   - HID usages are the hardware standard every system maps from. The names are the W3C UI Events
+     `code` values, which follow them one to one and which browsers and winit already use.
+   - A key is where it sits, not what it types, as on macOS (`CGKeyCode`) and Linux (`evdev`).
+     Windows' virtual-key codes for characters depend on the layout, so its backend reads and
+     sends characters by scan code. What a key is called on screen comes from the layout in use.
+   - Names keep settings readable by hand and portable between systems. Settings carry a
+     `version`, and files from 0.5 and earlier, with Win32 numbers, migrate.
 3. **ArtCraft is a reference, not a dependency.**
    - We copy and adapt its patterns and, where useful, its code. Its repositories are Apache-2.0.
      Copied code keeps its license header and attribution, says what was changed (Apache-2.0

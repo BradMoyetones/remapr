@@ -61,7 +61,7 @@ used on a real keyboard.
   across monitors with different DPI.
 - Debug builds run beside the installed app, with their own settings.
 
-## Phase 7: Builds and looks the same everywhere
+## Phase 7: Builds and looks the same everywhere (done)
 
 The first step toward macOS and Linux (see [docs/VISION.md](docs/VISION.md)). No new remapping
 features.
@@ -87,13 +87,16 @@ features.
 
 - `crates/core` (`remapr-core`) holds chords, modifiers, rules and the remap decision, with no
   OS code. Its tests run on every system.
-- Keys are identified by HID usage and stored by name (`from = "CapsLock"`). Modifiers are Ctrl,
-  Shift, Alt and Meta, shown as Win, ⌘ or Super.
+- A key is a position, identified by USB HID usage and stored by its W3C `code` name
+  (`from = "CapsLock"`, `"Ctrl+Shift+KeyT"`). On Windows, characters are read and sent by scan
+  code, so a mapping stays on its key whatever the layout. Modifiers are Ctrl, Shift, Alt and Meta,
+  shown as Win, ⌘ or Super.
 - The AltGr phantom Ctrl and the dummy key tapped before releasing Alt or Win move to the Windows
   backend.
 - A per-app rule matches a program file, a macOS bundle id or a Linux window class.
-- Settings and export files carry a version. 0.4 files, with Win32 key numbers, migrate; the
-  migration is tested against real ones.
+- Settings and export files carry a version. Files from 0.5 and earlier, with Win32 key numbers,
+  migrate through the layout in use, and the old file is kept as `config.v1.toml`. The migration
+  is tested against files as those versions wrote them.
 
 ## Phase 9: One engine contract
 
