@@ -121,9 +121,15 @@ as a target and "hide the physical controller" are locked.
      §4), and is listed in a third-party notice.
    - We don't depend on `craft-libs` by git. It pins egui and winit to storytold's forks through
      `[patch.crates-io]`, which would tie Remapr to those forks.
-4. **macOS remaps through `CGEventTap`, not Karabiner's DriverKit driver.** Karabiner's driver is
-   the route kanata takes. Skipping it means there is no system extension to install. It is also
-   fragile: there are reports of it no longer receiving the built-in keyboard in a macOS 26.4 beta.
+4. **macOS remaps through two layers it supports itself, not Karabiner's DriverKit driver.**
+   - Global key swaps go to macOS's key mapping (`hidutil`'s `UserKeyMapping`, Apple's TN2450).
+     It needs no permission, works under Secure Input, and is the only way to remap Caps Lock,
+     whose lock toggles before any event tap sees it.
+   - An event tap (`CGEventTap`, `CGEventPost`) does the rest. It needs the Accessibility
+     permission.
+   - Karabiner's driver is the route kanata takes. Skipping it means there is no system extension
+     to install, and avoids its fragility: there are reports of it no longer receiving the
+     built-in keyboard in a macOS 26.4 beta.
 5. **Virtual controllers on Windows go through a trait.** ViGEmBus was archived in November 2023
    and is no longer maintained, though it works and is widely installed. Remapr will detect it and
    help install it, and keep it behind a trait so another driver can replace it. Whether to write

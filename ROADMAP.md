@@ -114,13 +114,27 @@ features.
 
 ## Phase 10: macOS keyboard
 
-- Remapping through `CGEventTap` and `CGEventPost`. The app in front comes from `NSWorkspace`
-  (bundle id). The tap is turned back on if macOS disables it for being slow.
-- A first-run screen asks for the Accessibility and Input Monitoring permissions and notices
-  when they are granted. A notice explains when Secure Input (password fields) pauses remapping.
-- Menu bar icon, one instance at a time, native file dialogs (import and export), start at login,
-  and the display language from the system rather than the terminal's variables.
+Part 1, the engine:
+
+- Two layers, both macOS's own:
+  - Global key swaps go to macOS's key mapping (`hidutil`'s `UserKeyMapping`). It needs no
+    permission, keeps working while Secure Input is on, and is the only way to remap Caps Lock.
+  - Everything else goes to an event tap with `CGEventPost`: shortcuts, per-app rules (by bundle
+    id, from `NSWorkspace`), and keys several rules share.
+- The tap is turned back on if macOS disables it. A plain remap rewrites the event in place, so
+  keys keep their order.
+- The key mapping is cleared whenever Remapr stops: on quit, on a signal, or on the next start
+  after a crash.
+- A card asks for the Accessibility permission and unlocks by itself once it's granted. A
+  notice explains when Secure Input (password fields) pauses remapping.
 - Texts no longer name Windows where they mean the system.
+
+Part 2, the app on macOS:
+
+- Menu bar icon, one instance at a time, native file dialogs (import and export), start at login
+  (a LaunchAgent, as ArtCraft's launcher does).
+- The display language from the system rather than the terminal's variables, and key names from
+  the keyboard layout.
 - `cargo xtask dist` builds `Remapr.app` and a DMG. The updater offers new versions and opens
   their page.
 

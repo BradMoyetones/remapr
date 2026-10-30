@@ -6,9 +6,9 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
 
 ## Rules
 
-- `unsafe` lives only in `crates/engine/src/windows/{hook,layout}.rs` and `crates/platform`. The
-  workspace denies `unsafe_code`; those modules opt out with `#[allow(unsafe_code)]`. `remapr-core`
-  forbids it.
+- `unsafe` lives only in the engine's system modules (`windows/{hook,layout}.rs`,
+  `macos/{tap,system,hid}.rs`) and `crates/platform`. The workspace denies `unsafe_code`; those
+  modules opt out with `#[allow(unsafe_code)]`. `remapr-core` forbids it.
 - Keys are `remapr_core::Key`: a physical position, by USB HID usage, named as the W3C `code`
   values in files. Never store or compare a system's key codes outside its backend. Each system's
   translation is a plain table in `crates/engine/src/<system>/keys.rs`, tested on every system;
@@ -17,7 +17,7 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
   for the old version, a file as the old version wrote it in `apps/remapr/tests/fixtures` (never
   edited afterwards), and a test that converts it. Users' settings are never dropped silently.
 - Code for one system sits in its own `#[cfg]` module (`crates/platform/src/windows/`,
-  `crates/platform/src/unix.rs`, the engine's `windows/hook.rs` and `unsupported.rs`), not scattered
+  `crates/platform/src/unix.rs`, the engine's `windows/` and `macos/` and `unsupported.rs`), not scattered
   through the app. `remapr-platform`'s `lib.rs` lists every public item once, and each system's
   module provides all of them: an `Unsupported` error, `None` or a no-op where it can't do the job.
   Dependencies one system needs are target-specific (`[target.'cfg(windows)'.dependencies]`).
@@ -26,6 +26,12 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
   (rules come in as a thread message, the app in front from a WinEvent hook). Put new decisions in
   `crates/core/src/remap.rs` with a unit test; what only one system needs (Windows' AltGr and
   Alt-tap quirks) stays in its backend.
+- On macOS, global key swaps go to macOS's own key mapping (`hidutil`) and everything else to the
+  event tap (`macos/output.rs::split`). Remapr owns `UserKeyMapping` while it runs and clears it
+  however it stops: on drop, from the signal handler in `macos/hid.rs`, and on the next start.
+- The macOS tap callback may create the `CGEvent`s it posts (macOS allocates them), and nothing
+  else that allocates, locks or logs. It rewrites the event in place when one key becomes one key:
+  a posted event queues behind keys already waiting.
 - Never let anything register raw keyboard input (`RegisterRawInputDevices`): while a window of a
   process with that registration is in front, Windows skips that process's own low-level hook.
   winit registers it, so the app removes it at startup (`stop_raw_keyboard_input`).

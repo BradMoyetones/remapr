@@ -16,7 +16,9 @@ Remapr remaps keys and shortcuts on Windows today. One working release at a time
 a complete, high-end input remapper: keyboard, mouse, macros and game controllers, on Windows,
 macOS and Linux, native and open source.
 
-## What it does today (Windows)
+## What it does today
+
+On Windows, from the installer:
 
 - Remap any key to any other key, system-wide.
 - Shortcuts too: a key to a shortcut (`F1` to `Ctrl + Shift + T`), a shortcut to a key, or one
@@ -40,7 +42,7 @@ macOS and Linux, native and open source.
 
 | | Windows | macOS | Linux |
 |---|---|---|---|
-| Keys and shortcuts, per app | Yes | Planned | Planned |
+| Keys and shortcuts, per app | Yes | In progress (from source) | Planned |
 | Mouse buttons and macros | Planned | Planned | Planned |
 | Game controllers to keyboard and mouse | Planned | Planned | Planned |
 | Virtual game controllers | Planned | Not possible: Apple doesn't allow it | Planned |
@@ -96,10 +98,21 @@ are kept as `remapr.1.log` and `remapr.2.log`). `RUST_LOG=debug cargo run` shows
 
 ### On macOS and Linux
 
-The workspace builds, lints and tests on macOS and Linux too, and CI runs on all three. There the
-window opens and says remapping isn't available yet: the keyboard engine, the tray icon and the
-installer are Windows-only until Phases 10 (macOS) and 11 (Linux). Settings go to
-`~/Library/Application Support/Remapr-dev` on macOS and `~/.config/Remapr-dev` on Linux.
+The workspace builds, lints and tests on macOS and Linux too, and CI runs on all three. Settings
+go to `~/Library/Application Support/Remapr-dev` on macOS and `~/.config/Remapr-dev` on Linux.
+
+On macOS, `cargo run` remaps keys (Phase 10, part 1). The tray icon and the installer come next.
+
+- Global key swaps go to macOS's own key mapping (`hidutil`), so they need no permission. Remapr
+  owns `UserKeyMapping` while it runs and clears it when it stops.
+- Shortcuts, per-app mappings and adding a mapping by pressing keys need the Accessibility
+  permission. Outside an app bundle, macOS gives it to the app Remapr was started from: allow
+  your terminal, or VS Code, in System Settings › Privacy & Security › Accessibility.
+- Caps Lock can only be remapped in every app, as a plain key: its lock toggles before any tap
+  sees it.
+- Key names follow a US layout for now.
+
+On Linux the window opens and says remapping isn't available yet (Phase 11).
 
 From either, you can check the Windows code before pushing:
 
