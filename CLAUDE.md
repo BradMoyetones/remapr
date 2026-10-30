@@ -64,7 +64,15 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
 - Releases are made by pushing a `v<version>` tag matching `Cargo.toml` (see README, Releasing).
 - Check window chrome (title bar colour, visibility) with real screen pixels, not `PrintWindow`:
   it redraws the frame and hides bugs.
-- A new crate goes in `crates/<name>`, is named `remapr-<name>` and inherits workspace lints.
+- A new crate goes in `crates/<name>`, is named `remapr-<name>`, inherits workspace lints and gets
+  its layer in `xtask/src/layers.rs`; `cargo xtask layers` fails until it has one.
+- The app talks to the engine only as a `remapr_core::Backend` (commands in, events drained once
+  per frame). The UI decides what to offer from `Capabilities`, never from `cfg!(target_os)`;
+  `cfg!` is for system matters outside the engine (elevation, the title bar).
+- What happens to the mappings goes in `apps/remapr/src/session.rs`, tested with its fake backend;
+  `app.rs` draws, saves and talks to the system.
+- Libraries log through the `log` facade; only the app installs a logger (`logging.rs`). Never log
+  from a hook callback.
 
 ## Before committing
 
@@ -72,6 +80,7 @@ layout, ROADMAP.md for the phases and docs/VISION.md for the architecture they b
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo xtask layers
 ```
 
 CI runs these on Windows, macOS and Linux. To check another system's code from yours, add its

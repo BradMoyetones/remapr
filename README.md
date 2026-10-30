@@ -88,7 +88,11 @@ Run the tests, lints and formatter, the same checks CI runs:
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
+cargo xtask layers
 ```
+
+Remapr logs to standard error and to `logs/remapr.log` in its settings folder (the two runs before
+are kept as `remapr.1.log` and `remapr.2.log`). `RUST_LOG=debug cargo run` shows more.
 
 ### On macOS and Linux
 
@@ -205,7 +209,8 @@ Apps depend on crates, never the other way around. Each crate has one job:
 - **engine** knows nothing about the UI. On Windows it installs a `WH_KEYBOARD_LL` hook on a
   dedicated high-priority thread, translates Windows' key codes to core's keys
   (`src/windows/keys.rs`: characters by position, other keys by code), and swaps keys and
-  shortcuts through `SendInput`. Its API is small: `set_rules`, `set_enabled`, `start_capture`.
+  shortcuts through `SendInput`. The app sees it as a `remapr_core::Backend`: it sends commands
+  (rules, pause, capture), drains events once per frame, and reads its `Capabilities`.
 - **platform** wraps the few system calls the app needs outside the engine. Every function exists
   on every system: `src/windows/` holds the Win32 code, `src/unix.rs` what macOS and Linux do so
   far, and what a system can't do yet reports itself unsupported. Together with the engine's hook
@@ -214,7 +219,11 @@ Apps depend on crates, never the other way around. Each crate has one job:
   the theme, so light and dark mode stay consistent, and a test checks the palette's contrast. It
   embeds Inter, the logo's typeface (cut down to about 60 KB a weight), and Lucide icons as SVG,
   so Remapr looks the same on every system.
-- **apps/remapr** wires them together and owns the settings file and the tray icon.
+- **apps/remapr** wires them together. Its `Session` holds what happens to the mappings (adding
+  one by pressing keys, removing, undoing, pausing), apart from the window, and is tested with a
+  fake backend; the window draws it and owns the settings file, the tray icon and the logs.
+
+`cargo xtask layers` checks that each crate depends only on what its layer allows.
 
 ## How it works
 

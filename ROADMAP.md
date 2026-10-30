@@ -100,13 +100,17 @@ features.
 
 ## Phase 9: One engine contract
 
-- The app talks to the engine through one API: start, rules, pause, capture and capabilities,
-  with events back (capture done, app in front changed, permission changed, error).
-- `Capabilities` says, per function, whether it works, needs a permission, needs a driver or
-  isn't available. The UI reads that instead of asking which system it runs on.
-- A fake backend tests the capture flow and the UI's states on any system.
-- `cargo xtask layers` fails if `core` or the engine depend on egui.
-- Logs go to a rotated file in the settings folder.
+- The app talks to the engine only as a `remapr_core::Backend`: it sends commands (rules, pause,
+  capture) and drains events once per frame (capture done, capabilities changed, stopped).
+- `Capabilities` says, per function, whether it works, needs a permission, needs a driver, isn't
+  done yet, or isn't possible on this system. The UI reads that instead of asking which system it
+  runs on.
+- What happens to the mappings lives in a `Session`, apart from the window; a fake backend tests
+  the capture flow and its states on any system.
+- `cargo xtask layers` fails when a crate depends on one it shouldn't (core stays pure, ui knows
+  nothing about keys); CI runs it.
+- Logs go to the settings folder (`logs/remapr.log`, the two before kept), filtered by `RUST_LOG`.
+- The app in front as an event comes with profiles (Phase 12), which switch on it.
 
 ## Phase 10: macOS keyboard
 

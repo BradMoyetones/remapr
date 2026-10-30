@@ -76,19 +76,21 @@ from Phase 9, `cargo xtask layers` fails the build if they do.
 The UI never asks which system it runs on. It asks the engine what each function can do:
 
 ```rust
-pub enum Support { Yes, NeedsPermission(Permission), NeedsDriver(Driver), Unsupported(Reason) }
+// remapr_core::protocol, since Phase 9.
+pub enum Support { Yes, NeedsPermission(Permission), NeedsDriver(Driver), NotYet, NotOnThisSystem }
 
 pub struct Capabilities {
-    pub keyboard: Support,        // macOS: NeedsPermission(Accessibility) until granted
+    pub keyboard: Support,            // macOS: NeedsPermission(Accessibility) until granted
+    pub per_app_rules: Support,       // Linux on Wayland: depends on the compositor
     pub mouse: Support,
-    pub per_app_rules: Support,   // Linux on Wayland: depends on the compositor
-    pub gamepad_input: Support,   // Yes on all three
-    pub virtual_gamepad: Support, // macOS: Unsupported · Windows: NeedsDriver(ViGEm)
-    pub hide_physical: Support,   // Windows: NeedsDriver(HidHide) · Linux: Yes (EVIOCGRAB)
+    pub controllers: Support,         // Yes on all three
+    pub virtual_controllers: Support, // macOS: NotOnThisSystem · Windows: NeedsDriver(ViGEmBus)
+    pub hide_controllers: Support,    // Windows: NeedsDriver(HidHide) · Linux: Yes (EVIOCGRAB)
 }
 ```
 
-One widget in `crates/ui` draws the three states that aren't `Yes`:
+`NotYet` is Remapr's own gap, closed by a later phase; `NotOnThisSystem` is the system's limit. One
+widget in `crates/ui` draws the states that aren't `Yes`:
 
 | State | Example | What the user sees |
 |---|---|---|
