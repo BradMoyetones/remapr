@@ -19,8 +19,8 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
 use remapr_core::{
-    App, Backend, Capabilities, Chord, Command, Event, Key, KeyEvent, Mods, Out, Rule, State, decide, remaps_plainly,
-    sort_rules,
+    App, Backend, Capabilities, Capture, Chord, Command, Event, Key, KeyEvent, Mods, Out, Rule, State, decide,
+    remaps_plainly, sort_rules,
 };
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -59,7 +59,8 @@ thread_local! {
     static RULES: RefCell<Vec<Rule>> = const { RefCell::new(Vec::new()) };
     /// The executable of the window in front, lowercase (`chrome.exe`).
     static FOREGROUND: RefCell<String> = const { RefCell::new(String::new()) };
-    static CAPTURE: RefCell<Capture> = const { RefCell::new(Capture::new(0)) };
+    /// The capture under way, and the `CAPTURE_GENERATION` it belongs to.
+    static CAPTURE: RefCell<(u32, Capture)> = const { RefCell::new((0, Capture::new())) };
     /// Tells the app there are events to poll.
     static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
 }
@@ -282,53 +283,19 @@ fn handle(kb: &KBDLLHOOKSTRUCT, up: bool) -> Out {
     })
 }
 
-/// What a capture has seen so far.
-struct Capture {
-    generation: u32,
-    mods: Mods,
-    /// The first modifier pressed, which is the capture if no other key comes.
-    first_modifier: Option<Key>,
-    chord: Option<Chord>,
-    down: [bool; 256],
-}
-
-impl Capture {
-    const fn new(generation: u32) -> Self {
-        Self { generation, mods: Mods::NONE, first_modifier: None, chord: None, down: [false; 256] }
-    }
-}
-
-/// Collects a key with the modifiers held before it (or a lone modifier) and finishes once every
-/// key is up again. All of it is swallowed, so nothing reaches any app.
+/// Feeds the capture under way; once it catches a chord, stores it for [`Engine::captured`] and
+/// wakes the app.
 fn capture(ev: KeyEvent) {
-    CAPTURE.with_borrow_mut(|c| {
-        let generation = CAPTURE_GENERATION.load(Relaxed);
-        if c.generation != generation {
-            *c = Capture::new(generation);
+    CAPTURE.with_borrow_mut(|(generation, capture)| {
+        let current = CAPTURE_GENERATION.load(Relaxed);
+        if *generation != current {
+            *generation = current;
+            *capture = Capture::new();
         }
-        let i = usize::from(ev.key.index());
-        if !ev.up {
-            if !c.down[i] && c.chord.is_none() {
-                let m = ev.key.modifier();
-                if m.is_empty() {
-                    c.chord = Some(Chord { mods: c.mods, key: ev.key });
-                } else {
-                    c.mods = c.mods | m;
-                    c.first_modifier.get_or_insert(ev.key);
-                }
-            }
-            c.down[i] = true;
-        } else if c.down[i] {
-            c.down[i] = false;
-            if c.down.contains(&true) {
-                return;
-            }
-            if let Some(chord) = c.chord.or(c.first_modifier.map(Chord::key)) {
-                CAPTURED.store(u16::from(chord.mods.0) << 8 | u16::from(chord.key.index()), Relaxed);
-                CAPTURING.store(false, Relaxed);
-                WAKE.with_borrow(|wake| wake.as_ref().map(|wake| wake()));
-            }
-            *c = Capture::new(generation);
+        if let Some(chord) = capture.feed(ev) {
+            CAPTURED.store(u16::from(chord.mods.0) << 8 | u16::from(chord.key.index()), Relaxed);
+            CAPTURING.store(false, Relaxed);
+            WAKE.with_borrow(|wake| wake.as_ref().map(|wake| wake()));
         }
     });
 }
