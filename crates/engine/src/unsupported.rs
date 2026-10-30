@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crate::{Chord, Rule, Vk};
+use remapr_core::{Chord, Key, Rule};
 
 /// Can't be created here: [`Engine::start`] always fails.
 pub enum Engine {}
@@ -33,7 +33,12 @@ impl Engine {
     }
 }
 
-/// Key codes are Windows' here, so no layout can be asked: callers fall back to the code.
-pub fn layout_char(_vk: Vk) -> Option<char> {
+/// No layout to ask here: callers fall back to [`Key::us_char`].
+pub fn layout_char(_key: Key) -> Option<char> {
     None
+}
+
+/// No layout to ask here: the key a US layout gives `vk`.
+pub fn key_from_vk(vk: u8) -> Option<Key> {
+    crate::us_key_from_vk(vk)
 }

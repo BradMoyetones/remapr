@@ -1,6 +1,6 @@
 [package]
 name = "remapr-engine"
-description = "Global keyboard hook that remaps keys system-wide on Windows"
+description = "Remapr's keyboard backends: hooks each system's keys, asks remapr-core what to do, injects the result"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,9 @@ repository.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+remapr-core = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 remapr-platform = { workspace = true }

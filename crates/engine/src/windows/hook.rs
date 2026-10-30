@@ -4,6 +4,9 @@
 //! removes hooks that take too long. So all it reads lives on the hook thread itself: no locks, no
 //! allocation, no I/O. New rules arrive as a thread message, and the app in front is tracked by a
 //! WinEvent hook on the same thread, between key events.
+//!
+//! Each event becomes a [`Key`] through [`keys`] and goes to [`decide`]; Windows' own quirks stay
+//! here: AltGr's fake Left Ctrl, and the dummy tap before lifting Alt or Win ([`output`]).
 
 use std::cell::RefCell;
 use std::io;
@@ -12,6 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering::Relaxed};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
+use remapr_core::{App, Chord, Event, Key, Mods, Out, Rule, State, decide, remaps_plainly, sort_rules};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{
@@ -19,22 +23,22 @@ use windows_sys::Win32::System::Threading::{
 };
 use windows_sys::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_CHAR,
-    MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput, VK_NUMLOCK,
+    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
+    MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, SendInput,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetMessageW, HC_ACTION, KBDLLHOOKSTRUCT,
-    LLKHF_INJECTED, MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-    WH_KEYBOARD_LL, WINEVENT_OUTOFCONTEXT, WM_APP, WM_KEYUP, WM_QUIT, WM_SYSKEYUP,
+    LLKHF_EXTENDED, LLKHF_INJECTED, MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WINEVENT_OUTOFCONTEXT, WM_APP, WM_KEYUP, WM_QUIT, WM_SYSKEYUP,
 };
 
-use crate::remap::{Event, Out, State, decide, is_altgr_phantom, modifier_mods};
-use crate::{Chord, Mods, Rule, Vk};
+use super::keys::{self, VK_DUMMY, VK_NUMLOCK};
+use super::output::{self, Stroke};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static ENABLED: AtomicBool = AtomicBool::new(true);
 static CAPTURING: AtomicBool = AtomicBool::new(false);
-/// The captured chord, packed as `mods << 8 | key`; 0 while there is none.
+/// The captured chord, packed as `mods << 8 | key index`; 0 while there is none.
 static CAPTURED: AtomicU16 = AtomicU16::new(0);
 /// Bumped by each `start_capture`, so the hook thread starts its capture bookkeeping afresh.
 static CAPTURE_GENERATION: AtomicU32 = AtomicU32::new(0);
@@ -93,12 +97,7 @@ impl Engine {
 
     /// Replaces every rule. Rules for one app win over global ones, and shortcuts over plain remaps.
     pub fn set_rules(&self, mut rules: Vec<Rule>) {
-        for rule in &mut rules {
-            if let Some(app) = &mut rule.app {
-                app.make_ascii_lowercase();
-            }
-        }
-        rules.sort_by_key(|r| (r.app.is_none(), r.is_plain()));
+        sort_rules(&mut rules);
         let rules = Box::into_raw(Box::new(rules));
         // SAFETY: the hook thread takes the box back; if the post fails, we take it back here.
         unsafe {
@@ -132,7 +131,8 @@ impl Engine {
             return None;
         }
         let packed = CAPTURED.swap(0, Relaxed);
-        (packed != 0).then_some(Chord { mods: Mods((packed >> 8) as u8), key: packed as u8 })
+        let key = Key::from_index(packed as u8)?;
+        Some(Chord { mods: Mods((packed >> 8) as u8), key })
     }
 }
 
@@ -182,7 +182,7 @@ fn run(ready: mpsc::Sender<io::Result<u32>>, on_capture: Box<dyn Fn()>) {
         UnhookWinEvent(foreground);
         UnhookWindowsHookEx(hook);
     }
-    let stuck: Vec<(Vk, bool)> = STATE.with_borrow(|s| s.stuck().map(|vk| (vk, true)).collect());
+    let stuck: Vec<Stroke> = STATE.with_borrow(|s| s.stuck().map(|key| Stroke::Key { key, up: true }).collect());
     send_all(&stuck);
     CAPTURING.store(false, Relaxed);
     RUNNING.store(false, Relaxed);
@@ -204,23 +204,9 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     if code == HC_ACTION as i32 {
         // SAFETY: for HC_ACTION, `lparam` points to a KBDLLHOOKSTRUCT valid for this call.
         let kb = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
-        let ev = Event {
-            vk: kb.vkCode as Vk,
-            scan: kb.scanCode,
-            up: matches!(wparam as u32, WM_KEYUP | WM_SYSKEYUP),
-            injected: kb.flags & LLKHF_INJECTED != 0,
-        };
-        let out = STATE.with_borrow_mut(|s| {
-            // A key remapped before the capture started still has to lift what it pressed.
-            let capturable = (!ev.injected || CAPTURE_INJECTED.load(Relaxed)) && !(ev.up && s.is_replacing(ev.vk));
-            if CAPTURING.load(Relaxed) && capturable {
-                capture(ev);
-                return Out::swallow();
-            }
-            RULES.with_borrow(|rules| FOREGROUND.with_borrow(|app| decide(ev, ENABLED.load(Relaxed), rules, app, s)))
-        });
+        let out = handle(kb, matches!(wparam as u32, WM_KEYUP | WM_SYSKEYUP));
         // Sent outside the borrows: our own synthetic keys come back through this hook.
-        send_all(out.sends());
+        send_all(output::strokes(out.sends().iter().copied()).as_slice());
         if out.swallow {
             return 1;
         }
@@ -229,44 +215,67 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     unsafe { CallNextHookEx(null_mut(), code, wparam, lparam) }
 }
 
+/// What to do with one key event of the hook.
+fn handle(kb: &KBDLLHOOKSTRUCT, up: bool) -> Out {
+    let (vk, injected) = (kb.vkCode as u8, kb.flags & LLKHF_INJECTED != 0);
+    let capturing = CAPTURING.load(Relaxed);
+    let enabled = ENABLED.load(Relaxed);
+    if keys::is_altgr_phantom(vk, kb.scanCode) {
+        // Not a real Ctrl: never counted, captured or remapped as one. A remapped AltGr would
+        // otherwise arrive with a phantom Ctrl held.
+        let altgr_remapped =
+            || RULES.with_borrow(|r| FOREGROUND.with_borrow(|app| remaps_plainly(r, App::Exe(app), Key::AltRight)));
+        return if capturing || (enabled && altgr_remapped()) { Out::swallow() } else { Out::default() };
+    }
+    let Some(key) = keys::key_of(vk, kb.scanCode as u16, kb.flags & LLKHF_EXTENDED != 0) else {
+        // A key Remapr doesn't know can't be mapped; while capturing, it still reaches no app.
+        return if capturing && !injected { Out::swallow() } else { Out::default() };
+    };
+    let ev = Event { key, up, injected };
+    STATE.with_borrow_mut(|s| {
+        // A key remapped before the capture started still has to lift what it pressed.
+        let capturable = (!ev.injected || CAPTURE_INJECTED.load(Relaxed)) && !(ev.up && s.is_replacing(ev.key));
+        if capturing && capturable {
+            capture(ev);
+            return Out::swallow();
+        }
+        RULES.with_borrow(|rules| FOREGROUND.with_borrow(|app| decide(ev, enabled, rules, App::Exe(app), s)))
+    })
+}
+
 /// What a capture has seen so far.
 struct Capture {
     generation: u32,
     mods: Mods,
     /// The first modifier pressed, which is the capture if no other key comes.
-    first_modifier: Vk,
+    first_modifier: Option<Key>,
     chord: Option<Chord>,
     down: [bool; 256],
 }
 
 impl Capture {
     const fn new(generation: u32) -> Self {
-        Self { generation, mods: Mods::NONE, first_modifier: 0, chord: None, down: [false; 256] }
+        Self { generation, mods: Mods::NONE, first_modifier: None, chord: None, down: [false; 256] }
     }
 }
 
 /// Collects a key with the modifiers held before it (or a lone modifier) and finishes once every
 /// key is up again. All of it is swallowed, so nothing reaches any app.
 fn capture(ev: Event) {
-    if is_altgr_phantom(ev) {
-        return;
-    }
     CAPTURE.with_borrow_mut(|c| {
         let generation = CAPTURE_GENERATION.load(Relaxed);
         if c.generation != generation {
             *c = Capture::new(generation);
         }
-        let i = usize::from(ev.vk);
+        let i = usize::from(ev.key.index());
         if !ev.up {
             if !c.down[i] && c.chord.is_none() {
-                let m = modifier_mods(ev.vk);
+                let m = ev.key.modifier();
                 if m.is_empty() {
-                    c.chord = Some(Chord { mods: c.mods, key: ev.vk });
+                    c.chord = Some(Chord { mods: c.mods, key: ev.key });
                 } else {
                     c.mods = c.mods | m;
-                    if c.first_modifier == 0 {
-                        c.first_modifier = ev.vk;
-                    }
+                    c.first_modifier.get_or_insert(ev.key);
                 }
             }
             c.down[i] = true;
@@ -275,9 +284,8 @@ fn capture(ev: Event) {
             if c.down.contains(&true) {
                 return;
             }
-            let lone_modifier = (c.first_modifier != 0).then_some(Chord { mods: Mods::NONE, key: c.first_modifier });
-            if let Some(chord) = c.chord.or(lone_modifier) {
-                CAPTURED.store(u16::from(chord.mods.0) << 8 | u16::from(chord.key), Relaxed);
+            if let Some(chord) = c.chord.or(c.first_modifier.map(Chord::key)) {
+                CAPTURED.store(u16::from(chord.mods.0) << 8 | u16::from(chord.key.index()), Relaxed);
                 CAPTURING.store(false, Relaxed);
                 ON_CAPTURE.with_borrow(|f| f.as_ref().map(|f| f()));
             }
@@ -286,40 +294,45 @@ fn capture(ev: Event) {
     });
 }
 
-/// Injects `keys` ((key, is release) pairs) in one go, so nothing can slip in between them.
-fn send_all(keys: &[(Vk, bool)]) {
-    if keys.is_empty() {
-        return;
+/// Injects `strokes` in one go per batch, so nothing can slip in between them.
+fn send_all(strokes: &[Stroke]) {
+    for batch in strokes.chunks(output::MAX) {
+        // SAFETY: INPUT is plain data; all-zero is a valid value, then filled in below.
+        let mut inputs = [unsafe { std::mem::zeroed::<INPUT>() }; output::MAX];
+        let mut n = 0;
+        for input in batch.iter().filter_map(|&s| keyboard_input(s)) {
+            inputs[n] = input;
+            n += 1;
+        }
+        if n > 0 {
+            // SAFETY: `n` initialised INPUTs.
+            unsafe { SendInput(n as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) };
+        }
     }
-    // SAFETY: INPUT is plain data; all-zero is a valid value, then filled in below.
-    let mut inputs = [unsafe { std::mem::zeroed::<INPUT>() }; 16];
-    for (input, &(vk, up)) in inputs.iter_mut().zip(keys) {
-        *input = keyboard_input(vk, up);
-    }
-    let n = keys.len().min(inputs.len());
-    // SAFETY: `n` initialised INPUTs.
-    unsafe { SendInput(n as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) };
 }
 
-fn keyboard_input(vk: Vk, up: bool) -> INPUT {
+fn keyboard_input(stroke: Stroke) -> Option<INPUT> {
+    let (key, up) = match stroke {
+        Stroke::Dummy { up } => return Some(input(u16::from(VK_DUMMY), 0, up, 0)),
+        Stroke::Key { key, up } => (key, up),
+    };
+    if let Some(scan) = keys::char_scan(key) {
+        // A character key, by position: Windows takes its virtual-key code from the layout of the
+        // app it reaches, as for a real key.
+        return Some(input(0, scan, up, KEYEVENTF_SCANCODE));
+    }
+    let (vk, extended) = keys::vk_of(key)?;
     // SAFETY: a pure lookup with no pointers.
     let scan = unsafe { MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_VSC_EX) };
-    let mut flags = if up { KEYEVENTF_KEYUP } else { 0 };
     // Arrows, Insert/Delete, right Ctrl/Alt… share scan codes with other keys; E0 tells them apart.
-    if scan & 0xFF00 == 0xE000 || u16::from(vk) == VK_NUMLOCK {
-        flags |= KEYEVENTF_EXTENDEDKEY;
-    }
-    INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT { wVk: u16::from(vk), wScan: (scan & 0xFF) as u16, dwFlags: flags, time: 0, dwExtraInfo: 0 },
-        },
-    }
+    let extended = extended.unwrap_or(scan & 0xFF00 == 0xE000) || vk == VK_NUMLOCK;
+    Some(input(u16::from(vk), (scan & 0xFF) as u16, up, if extended { KEYEVENTF_EXTENDEDKEY } else { 0 }))
 }
 
-/// The character `vk` types on the current keyboard layout (`Ñ` for `VK_OEM_3` on Spanish).
-pub fn layout_char(vk: Vk) -> Option<char> {
-    // SAFETY: a pure lookup with no pointers.
-    let c = unsafe { MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_CHAR) } & 0xFFFF;
-    char::from_u32(c).filter(|c| !c.is_control())
+fn input(vk: u16, scan: u16, up: bool, flags: u32) -> INPUT {
+    let flags = flags | if up { KEYEVENTF_KEYUP } else { 0 };
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: scan, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
+    }
 }

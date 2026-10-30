@@ -1,0 +1,43 @@
+enabled = true
+theme = "dark"
+tray_hint_seen = true
+last_version = "0.5.0"
+
+[[mappings]]
+from = 20
+to = 27
+
+[[mappings]]
+from = 112
+to = 84
+to_mods = 3
+
+[[mappings]]
+from = 84
+to = 116
+from_mods = 3
+to_mods = 1
+app = "code.exe"
+
+[[mappings]]
+from = 192
+to = 46
+
+[[mappings]]
+from = 165
+to = 162
+app = "chrome.exe"
+
+[[mappings]]
+from = 37
+to = 36
+
+[[mappings]]
+from = 76
+to = 76
+from_mods = 8
+to_mods = 1
+
+[[mappings]]
+from = 231
+to = 27

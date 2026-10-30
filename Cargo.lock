@@ -2827,6 +2827,7 @@ version = "0.5.0"
 dependencies = [
  "eframe",
  "raw-window-handle",
+ "remapr-core",
  "remapr-engine",
  "remapr-platform",
  "remapr-ui",
@@ -2839,9 +2840,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "remapr-core"
+version = "0.5.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "remapr-engine"
 version = "0.5.0"
 dependencies = [
+ "remapr-core",
  "remapr-platform",
  "windows-sys 0.61.2",
 ]

@@ -1,0 +1,11 @@
+# Remapr: exported mappings. Import them from Remapr's ⋯ menu.
+
+[[mappings]]
+from = 20
+to = 27
+
+[[mappings]]
+from = 112
+to = 84
+to_mods = 3
+app = "Code.exe"
