@@ -5,6 +5,7 @@ mod app;
 mod config;
 mod i18n;
 mod keys;
+mod session;
 mod tray;
 mod updates;
 

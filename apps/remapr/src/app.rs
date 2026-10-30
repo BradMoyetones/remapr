@@ -1,5 +1,8 @@
 //! The main window: the list of remapped keys, adding one by pressing keys, pause and theme.
 //! Closing it hides it to the tray; remapping keeps running until "Salir".
+//!
+//! What happens to the mappings is the [`Session`]'s; the window draws it, forwards clicks to it,
+//! and saves the settings when the session changed them.
 
 use std::sync::mpsc::{self, Receiver};
 
@@ -8,16 +11,16 @@ use eframe::egui::{
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use remapr_core::{AppMatcher, Chord};
-use remapr_engine::Engine;
 use remapr_platform::{SingleInstance, TitleBarDoubleClick, startup};
 use remapr_ui::{
-    KeyState, Palette, Tone, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button,
-    semibold, switch, title_bar,
+    KeyState, Palette, banner, card, danger_icon_button, icon, icon_button, icon_label, kbd, primary_button, semibold,
+    switch, title_bar,
 };
 
-use crate::config::{self, Config, Mapping, Theme};
+use crate::config::{self, Config, Theme};
 use crate::i18n::{tr, trn};
-use crate::keys::{chord_name, chord_text};
+use crate::keys::chord_name;
+use crate::session::{Capture, Notice, Session};
 use crate::tray::{self, Command, Tray};
 use crate::updates::{self, Updates};
 
@@ -25,29 +28,8 @@ use crate::updates::{self, Updates};
 /// room at the top for the native window buttons.
 const MACOS_TITLE_BAR: i8 = 28;
 
-/// Adding a mapping: first the key to change, then the key it should send.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Capture {
-    Idle,
-    From,
-    To(Chord),
-}
-
-struct Notice {
-    text: String,
-    /// A deleted mapping and where it was, so "Deshacer" can put it back.
-    undo: Option<(usize, Mapping)>,
-    /// A page to open from a "Novedades" button.
-    link: Option<String>,
-}
-
 pub struct App {
-    config: Config,
-    engine: Option<Engine>,
-    /// Why there is no engine; `Info` when this system just doesn't have one yet.
-    engine_error: Option<(Tone, String)>,
-    capture: Capture,
-    notice: Option<Notice>,
+    session: Session,
     /// `None` if Windows refused the tray icon; closing the window then quits.
     tray: Option<Tray>,
     commands: Receiver<Command>,
@@ -89,7 +71,7 @@ impl App {
         remapr_platform::stop_raw_keyboard_input();
         let (mut config, load_warning) = Config::load();
         // First start after an update: say so, with a way to the release notes.
-        let mut notice = load_warning.map(|text| Notice { text, undo: None, link: None });
+        let mut notice = load_warning.map(Notice::text);
         if config.last_version != updates::VERSION {
             if !config.last_version.is_empty() {
                 let text = tr!("Remapr was updated to version {version}.", version = updates::VERSION);
@@ -99,14 +81,15 @@ impl App {
             let _ = config.save();
         }
         let ctx = cc.egui_ctx.clone();
-        let (engine, engine_error) = match Engine::start(move || ctx.request_repaint()) {
-            Ok(engine) => (Some(engine), None),
-            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => {
-                let text = tr!("Remapr can't remap keys on this system yet: for now it only works on Windows.");
-                (None, Some((Tone::Info, text.into())))
-            }
-            Err(e) => (None, Some((Tone::Danger, tr!("Couldn't start the keyboard engine: {error}", error = e)))),
-        };
+        let engine = remapr_engine::start(move || ctx.request_repaint());
+        match &engine {
+            // Expected where Remapr has no backend yet.
+            Err(e) if e.kind() == std::io::ErrorKind::Unsupported => log::info!("no keyboard engine: {e}"),
+            Err(e) => log::error!("no keyboard engine: {e}"),
+            Ok(_) => {}
+        }
+        let mut session = Session::new(config, engine, remapr_engine::capabilities());
+        session.notice = notice;
 
         let (sender, commands) = mpsc::channel();
         if let Some(instance) = instance {
@@ -116,17 +99,18 @@ impl App {
                 ctx.request_repaint();
             });
         }
-        let tray = Tray::new(config.enabled, sender, cc.egui_ctx.clone()).ok();
+        let tray = Tray::new(session.config.enabled, sender, cc.egui_ctx.clone())
+            // Expected outside Windows for now.
+            .inspect_err(|e| {
+                log::log!(if cfg!(windows) { log::Level::Warn } else { log::Level::Info }, "no tray icon: {e}")
+            })
+            .ok();
         let elevated = remapr_platform::is_elevated();
         // Starts reading the system's setting now, so it is known by the first double-click.
         let _ = remapr_platform::title_bar_double_click();
 
         let app = Self {
-            config,
-            engine,
-            engine_error,
-            capture: Capture::Idle,
-            notice,
+            session,
             tray,
             commands,
             tray_hint_open: false,
@@ -140,27 +124,20 @@ impl App {
             updates: Updates::new(&cc.egui_ctx, update_source(installed), elevated),
         };
         app.apply_theme(&cc.egui_ctx);
-        app.sync();
         app
     }
 
-    /// Shows the config's state in the engine and the tray.
-    fn sync(&self) {
-        if let Some(engine) = &self.engine {
-            engine.set_enabled(self.config.enabled);
-            engine.set_rules(self.config.mappings.iter().map(Mapping::rule).collect());
+    /// Saves the settings and shows them in the tray, if the session changed them.
+    fn persist(&mut self) {
+        if !self.session.take_unsaved() {
+            return;
+        }
+        if let Err(e) = self.session.config.save() {
+            log::error!("couldn't save the settings: {e}");
+            self.session.notice = Some(Notice::text(tr!("Couldn't save the settings: {error}", error = e)));
         }
         if let Some(tray) = &self.tray {
-            tray.sync(self.config.enabled);
-        }
-    }
-
-    /// Applies the config everywhere and saves it.
-    fn commit(&mut self) {
-        self.sync();
-        if let Err(e) = self.config.save() {
-            self.notice =
-                Some(Notice { text: tr!("Couldn't save the settings: {error}", error = e), undo: None, link: None });
+            tray.sync(self.session.config.enabled);
         }
     }
 
@@ -171,7 +148,7 @@ impl App {
     }
 
     fn hide_to_tray(&mut self, ctx: &egui::Context) {
-        self.cancel_capture();
+        self.session.cancel_capture();
         ctx.send_viewport_cmd(ViewportCommand::Visible(false));
     }
 
@@ -184,16 +161,13 @@ impl App {
         while let Ok(command) = self.commands.try_recv() {
             match command {
                 Command::Show => Self::show_window(ctx),
-                Command::TogglePause => {
-                    self.config.enabled = !self.config.enabled;
-                    self.commit();
-                }
+                Command::TogglePause => self.session.set_enabled(!self.session.config.enabled),
                 Command::Quit => self.quit(ctx),
             }
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && self.tray.is_some() {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
-            if self.config.tray_hint_seen {
+            if self.session.config.tray_hint_seen {
                 self.hide_to_tray(ctx);
             } else {
                 self.tray_hint_open = true;
@@ -227,76 +201,21 @@ impl App {
             });
         if let Some(quit) = choice {
             self.tray_hint_open = false;
-            self.config.tray_hint_seen = true;
-            self.commit();
+            self.session.config.tray_hint_seen = true;
+            self.session.changed();
             if quit { self.quit(&ctx) } else { self.hide_to_tray(&ctx) }
         }
     }
 
     /// egui also brings the native title bar along (`Options::sync_window_theme`).
     fn apply_theme(&self, ctx: &egui::Context) {
-        let (preference, dark) = match self.config.theme {
+        let (preference, dark) = match self.session.config.theme {
             Theme::System => (ThemePreference::System, None),
             Theme::Light => (ThemePreference::Light, Some(false)),
             Theme::Dark => (ThemePreference::Dark, Some(true)),
         };
         ctx.set_theme(preference);
         remapr_platform::keep_title_bar_theme(dark);
-    }
-
-    fn start_capture(&mut self) {
-        if let Some(engine) = &self.engine {
-            engine.start_capture();
-            self.capture = Capture::From;
-            self.notice = None;
-        }
-    }
-
-    fn cancel_capture(&mut self) {
-        if let Some(engine) = &self.engine {
-            engine.cancel_capture();
-        }
-        self.capture = Capture::Idle;
-    }
-
-    fn on_captured(&mut self, chord: Chord) {
-        match self.capture {
-            Capture::Idle => {}
-            Capture::From => {
-                self.capture = Capture::To(chord);
-                if let Some(engine) = &self.engine {
-                    engine.start_capture();
-                }
-            }
-            Capture::To(from) => {
-                self.capture = Capture::Idle;
-                self.add(Mapping::new(from, chord));
-            }
-        }
-    }
-
-    fn add(&mut self, mapping: Mapping) {
-        let (from, to) = (chord_text(mapping.from), chord_text(mapping.to));
-        if mapping.from == mapping.to {
-            let text = tr!("You chose {keys} twice, so nothing changed.", keys = from);
-            self.notice = Some(Notice { text, undo: None, link: None });
-            return;
-        }
-        if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
-            existing.to = mapping.to;
-            let text = tr!("{from} was already remapped. It now sends {to}.", from = from, to = to);
-            self.notice = Some(Notice { text, undo: None, link: None });
-        } else {
-            self.config.mappings.push(mapping);
-        }
-        self.commit();
-    }
-
-    fn remove(&mut self, index: usize) {
-        let m = self.config.mappings.remove(index);
-        let text = tr!("Removed {from} → {to}.", from = chord_text(m.from), to = chord_text(m.to));
-        self.notice = Some(Notice { text, undo: Some((index, m)), link: None });
-        self.commit();
     }
 
     fn export_mappings(&mut self) {
@@ -306,15 +225,16 @@ impl App {
         else {
             return;
         };
-        let text = match std::fs::write(&path, config::export(&self.config.mappings)) {
+        let mappings = &self.session.config.mappings;
+        let text = match std::fs::write(&path, config::export(mappings)) {
             Ok(()) => tr!(
                 "Exported {count} to {file}.",
-                count = trn!("{n} mapping|{n} mappings", self.config.mappings.len()),
+                count = trn!("{n} mapping|{n} mappings", mappings.len()),
                 file = path.display()
             ),
             Err(e) => tr!("Couldn't export: {error}", error = e),
         };
-        self.notice = Some(Notice { text, undo: None, link: None });
+        self.session.notice = Some(Notice::text(text));
     }
 
     /// Adds the mappings of an export file; one that fires on the same keys in the same place
@@ -322,58 +242,9 @@ impl App {
     fn import_mappings(&mut self) {
         let kind = remapr_platform::FileKind { name: tr!("Remapr mappings"), extension: "toml" };
         let Some(path) = remapr_platform::open_file_dialog(self.hwnd, tr!("Import mappings"), &kind) else { return };
-        let imported = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| config::import(&t));
-        let text = match imported {
-            Ok(mappings) => {
-                let (total, mut replaced) = (mappings.len(), 0);
-                for mapping in mappings {
-                    if let Some(existing) = self.config.mappings.iter_mut().find(|m| m.clashes_with(&mapping)) {
-                        *existing = mapping;
-                        replaced += 1;
-                    } else {
-                        self.config.mappings.push(mapping);
-                    }
-                }
-                self.commit();
-                let total = trn!("{n} mapping|{n} mappings", total);
-                match replaced {
-                    0 => tr!("Imported {count}.", count = total),
-                    1 => tr!("Imported {count}; one replaced the mapping you had on the same keys.", count = total),
-                    n => tr!(
-                        "Imported {count}; {replaced} replaced the mappings you had on the same keys.",
-                        count = total,
-                        replaced = n
-                    ),
-                }
-            }
-            Err(e) => tr!("Couldn't import: {error}", error = e),
-        };
-        self.notice = Some(Notice { text, undo: None, link: None });
-    }
-
-    /// Limits mapping `index` to `app`, or lets it apply everywhere with `None`.
-    fn set_app(&mut self, index: usize, app: Option<AppMatcher>) {
-        let mut moved = self.config.mappings[index].clone();
-        moved.app = app;
-        // Another mapping of the same keys already there: this one replaces it.
-        if let Some(other) =
-            (0..self.config.mappings.len()).find(|&i| i != index && self.config.mappings[i].clashes_with(&moved))
-        {
-            self.config.mappings.remove(other);
-            let index = if other < index { index - 1 } else { index };
-            self.config.mappings[index] = moved;
-        } else {
-            self.config.mappings[index] = moved;
-        }
-        self.commit();
-    }
-
-    fn undo(&mut self, index: usize, mapping: Mapping) {
-        self.notice = None;
-        if self.config.mappings.iter().all(|m| !m.clashes_with(&mapping)) {
-            let index = index.min(self.config.mappings.len());
-            self.config.mappings.insert(index, mapping);
-            self.commit();
+        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| config::import(&t)) {
+            Ok(mappings) => self.session.import(mappings),
+            Err(e) => self.session.notice = Some(Notice::text(tr!("Couldn't import: {error}", error = e))),
         }
     }
 
@@ -388,27 +259,26 @@ impl App {
                 ui.label(RichText::new(tr!("Remap any key on your keyboard")).color(p.muted));
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let mut enabled = self.config.enabled;
+                let mut enabled = self.session.config.enabled;
                 if switch(ui, &mut enabled, tr!("Remapping on")).changed() {
-                    self.config.enabled = enabled;
-                    self.commit();
+                    self.session.set_enabled(enabled);
                 }
                 ui.label(RichText::new(if enabled { tr!("On") } else { tr!("Paused") }).color(p.muted));
                 ui.add_space(4.0);
-                let (glyph, label, next) = match self.config.theme {
+                let (glyph, label, next) = match self.session.config.theme {
                     Theme::System => (icon::SYSTEM, tr!("Theme: same as the system"), Theme::Light),
                     Theme::Light => (icon::SUN, tr!("Theme: light"), Theme::Dark),
                     Theme::Dark => (icon::MOON, tr!("Theme: dark"), Theme::System),
                 };
                 if icon_button(ui, glyph, label).clicked() {
-                    self.config.theme = next;
+                    self.session.config.theme = next;
                     self.apply_theme(ui.ctx());
-                    self.commit();
+                    self.session.changed();
                 }
                 let mut action = None;
                 let more = icon_button(ui, icon::MORE, tr!("More options"));
                 egui::Popup::menu(&more).show(|ui| {
-                    let has_mappings = !self.config.mappings.is_empty();
+                    let has_mappings = !self.session.config.mappings.is_empty();
                     if ui.add_enabled(has_mappings, egui::Button::new(tr!("Export mappings…"))).clicked() {
                         action = Some(true);
                     }
@@ -430,10 +300,10 @@ impl App {
 
     fn footer(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
-        let (color, status) = match (&self.engine, self.config.enabled) {
-            (None, _) => (p.danger, tr!("Engine stopped")),
-            (Some(_), true) => (p.success, tr!("Engine running")),
-            (Some(_), false) => (p.muted, tr!("Paused: your keys work as usual")),
+        let (color, status) = match (self.session.is_running(), self.session.config.enabled) {
+            (false, _) => (p.danger, tr!("Engine stopped")),
+            (true, true) => (p.success, tr!("Engine running")),
+            (true, false) => (p.muted, tr!("Paused: your keys work as usual")),
         };
         ui.horizontal(|ui| {
             let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
@@ -494,33 +364,33 @@ impl App {
             Ok(()) => self.starts_at_sign_in = Some(on),
             Err(e) => {
                 let text = tr!("Couldn't change starting with Windows: {error}", error = e);
-                self.notice = Some(Notice { text, undo: None, link: None });
+                self.session.notice = Some(Notice::text(text));
             }
         }
     }
 
     fn body(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
-        if let Some((tone, e)) = &self.engine_error {
+        if let Some((tone, e)) = self.session.status() {
             banner(ui, *tone, e);
             ui.add_space(4.0);
         }
         self.notice_bar(ui);
         self.updates.banner(ui);
 
-        let capturing = self.capture != Capture::Idle;
-        if self.config.mappings.is_empty() && !capturing {
+        let capturing = self.session.capture() != Capture::Idle;
+        if self.session.config.mappings.is_empty() && !capturing {
             self.empty_state(ui);
             return;
         }
 
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr!("Remapped keys")).font(semibold(16.0)).color(p.text));
-            ui.label(RichText::new(self.config.mappings.len().to_string()).color(p.muted));
+            ui.label(RichText::new(self.session.config.mappings.len().to_string()).color(p.muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let can_add = !capturing && self.engine.is_some();
+                let can_add = !capturing && self.session.can_capture();
                 if ui.add_enabled_ui(can_add, |ui| primary_button(ui, Some(icon::ADD), tr!("Add"))).inner.clicked() {
-                    self.start_capture();
+                    self.session.start_capture();
                 }
             });
         });
@@ -531,11 +401,12 @@ impl App {
         }
 
         let (mut remove, mut set_app) = (None, None);
+        let per_app = self.session.per_app_rules();
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            if !self.config.enabled {
+            if !self.session.config.enabled {
                 ui.multiply_opacity(0.55);
             }
-            for (i, m) in self.config.mappings.iter().enumerate() {
+            for (i, m) in self.session.config.mappings.iter().enumerate() {
                 card(ui, false, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
@@ -546,7 +417,7 @@ impl App {
                             if danger_icon_button(ui, icon::DELETE, tr!("Remove this mapping")).clicked() {
                                 remove = Some(i);
                             }
-                            if let Some(app) = app_picker(ui, m.app.as_ref()) {
+                            if per_app && let Some(app) = app_picker(ui, m.app.as_ref()) {
                                 set_app = Some((i, app));
                             }
                         });
@@ -555,9 +426,9 @@ impl App {
             }
         });
         if let Some(i) = remove {
-            self.remove(i);
+            self.session.remove(i);
         } else if let Some((i, app)) = set_app {
-            self.set_app(i, app);
+            self.session.set_app(i, app);
         }
     }
 
@@ -567,7 +438,7 @@ impl App {
         card(ui, true, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                match self.capture {
+                match self.session.capture() {
                     Capture::To(from) => {
                         chord_caps(ui, from, KeyState::Idle);
                         icon_label(ui, icon::FORWARD, 16.0, p.muted);
@@ -581,7 +452,7 @@ impl App {
                     cancel = ui.button(tr!("Cancel")).clicked();
                 });
             });
-            let step = match self.capture {
+            let step = match self.session.capture() {
                 Capture::To(_) => tr!("Now press the key or shortcut it should send instead."),
                 _ => tr!("Press the key or shortcut you want to change."),
             };
@@ -594,7 +465,7 @@ impl App {
         });
         ui.add_space(4.0);
         if cancel {
-            self.cancel_capture();
+            self.session.cancel_capture();
         }
     }
 
@@ -611,19 +482,19 @@ impl App {
             );
             ui.add_space(12.0);
             if ui
-                .add_enabled_ui(self.engine.is_some(), |ui| {
+                .add_enabled_ui(self.session.can_capture(), |ui| {
                     primary_button(ui, Some(icon::ADD), tr!("Add my first mapping"))
                 })
                 .inner
                 .clicked()
             {
-                self.start_capture();
+                self.session.start_capture();
             }
         });
     }
 
     fn notice_bar(&mut self, ui: &mut egui::Ui) {
-        let Some(notice) = &self.notice else { return };
+        let Some(notice) = &self.session.notice else { return };
         let p = Palette::of(ui);
         let (mut close, mut undo, mut open) = (false, None, None);
         card(ui, false, |ui| {
@@ -646,9 +517,9 @@ impl App {
             remapr_platform::open_in_browser(&url);
         }
         if let Some((index, mapping)) = undo {
-            self.undo(index, mapping);
+            self.session.undo(index, mapping);
         } else if close {
-            self.notice = None;
+            self.session.notice = None;
         }
     }
 }
@@ -664,16 +535,14 @@ impl eframe::App for App {
         if self.updates.poll() {
             self.quit(ctx);
         }
-        if self.capture == Capture::Idle {
-            return;
-        }
+        self.session.poll();
         // Capturing swallows every key system-wide; never keep doing it behind the user's back.
         // Windows' own answer, not egui's: its focus flag can lag behind.
-        if !self.hwnd.is_some_and(remapr_platform::is_foreground) {
-            self.cancel_capture();
-        } else if let Some(vk) = self.engine.as_ref().and_then(Engine::captured) {
-            self.on_captured(vk);
+        if self.session.capture() != Capture::Idle && !self.hwnd.is_some_and(remapr_platform::is_foreground) {
+            self.session.cancel_capture();
         }
+        // Here too, not only after `ui`: a hidden window runs no `ui`, and the tray can pause.
+        self.persist();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -702,6 +571,7 @@ impl eframe::App for App {
         if self.tray_hint_open {
             self.tray_hint(ui);
         }
+        self.persist();
     }
 }
 

@@ -2,6 +2,8 @@
 //! (`layout`), around plain tables and rules ([`keys`], [`output`]) that compile and are tested on
 //! every system.
 
+use remapr_core::{Capabilities, Support};
+
 pub mod keys;
 pub mod output;
 
@@ -13,6 +15,21 @@ mod hook;
 mod layout;
 
 #[cfg(windows)]
-pub use hook::Engine;
-#[cfg(windows)]
 pub use layout::layout_char;
+
+/// What Windows' backend does so far. Controllers come in Phases 14 and 15, virtual ones with
+/// drivers.
+pub const CAPABILITIES: Capabilities = Capabilities {
+    keyboard: Support::Yes,
+    per_app_rules: Support::Yes,
+    mouse: Support::NotYet,
+    controllers: Support::NotYet,
+    virtual_controllers: Support::NotYet,
+    hide_controllers: Support::NotYet,
+};
+
+/// Installs the keyboard hook.
+#[cfg(windows)]
+pub fn start(wake: impl Fn() + Send + 'static) -> std::io::Result<Box<dyn remapr_core::Backend>> {
+    Ok(Box::new(hook::Engine::start(wake)?))
+}

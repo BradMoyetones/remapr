@@ -7,6 +7,9 @@
 //!
 //! Each event becomes a [`Key`] through [`keys`] and goes to [`decide`]; Windows' own quirks stay
 //! here: AltGr's fake Left Ctrl, and the dummy tap before lifting Alt or Win ([`output`]).
+//!
+//! The app sees an [`Engine`] as a [`Backend`]. Nothing is logged from the hook callback: only when
+//! the hook thread starts and stops.
 
 use std::cell::RefCell;
 use std::io;
@@ -15,7 +18,10 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering::Relaxed};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use remapr_core::{App, Chord, Event, Key, Mods, Out, Rule, State, decide, remaps_plainly, sort_rules};
+use remapr_core::{
+    App, Backend, Capabilities, Chord, Command, Event, Key, KeyEvent, Mods, Out, Rule, State, decide, remaps_plainly,
+    sort_rules,
+};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::{
@@ -54,7 +60,8 @@ thread_local! {
     /// The executable of the window in front, lowercase (`chrome.exe`).
     static FOREGROUND: RefCell<String> = const { RefCell::new(String::new()) };
     static CAPTURE: RefCell<Capture> = const { RefCell::new(Capture::new(0)) };
-    static ON_CAPTURE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+    /// Tells the app there are events to poll.
+    static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
 }
 
 /// The running hook. Dropping it removes the hook and releases any key it is holding down.
@@ -62,19 +69,23 @@ thread_local! {
 pub struct Engine {
     thread_id: u32,
     thread: Option<JoinHandle<()>>,
+    /// Events the hook thread reports outside key events (the hook stopping).
+    events: mpsc::Receiver<Event>,
 }
 
 impl Engine {
-    /// Installs the hook. `on_capture` runs on the hook thread when a key capture completes, to
-    /// wake the UI (keys are swallowed while capturing, so the UI sees no input of its own).
-    pub fn start(on_capture: impl Fn() + Send + 'static) -> io::Result<Self> {
+    /// Installs the hook. `wake` runs on the hook thread when there are events to poll: a finished
+    /// capture (keys are swallowed while capturing, so the app sees no input of its own).
+    pub fn start(wake: impl Fn() + Send + 'static) -> io::Result<Self> {
         if RUNNING.swap(true, Relaxed) {
             return Err(io::Error::new(io::ErrorKind::AlreadyExists, "the engine is already running"));
         }
         CAPTURE_INJECTED
             .store(cfg!(debug_assertions) && std::env::var_os("REMAPR_CAPTURE_INJECTED").is_some(), Relaxed);
         let (tx, rx) = mpsc::channel();
-        let thread = thread::Builder::new().name("remapr-hook".into()).spawn(move || run(tx, Box::new(on_capture)));
+        let (events_tx, events) = mpsc::channel();
+        let thread =
+            thread::Builder::new().name("remapr-hook".into()).spawn(move || run(tx, events_tx, Box::new(wake)));
         let thread = match thread {
             Ok(t) => t,
             Err(e) => {
@@ -83,7 +94,10 @@ impl Engine {
             }
         };
         match rx.recv() {
-            Ok(Ok(thread_id)) => Ok(Self { thread_id, thread: Some(thread) }),
+            Ok(Ok(thread_id)) => {
+                log::info!("keyboard hook installed");
+                Ok(Self { thread_id, thread: Some(thread), events })
+            }
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -96,7 +110,8 @@ impl Engine {
     }
 
     /// Replaces every rule. Rules for one app win over global ones, and shortcuts over plain remaps.
-    pub fn set_rules(&self, mut rules: Vec<Rule>) {
+    fn set_rules(&self, mut rules: Vec<Rule>) {
+        log::debug!("{} rules", rules.len());
         sort_rules(&mut rules);
         let rules = Box::into_raw(Box::new(rules));
         // SAFETY: the hook thread takes the box back; if the post fails, we take it back here.
@@ -107,32 +122,46 @@ impl Engine {
         }
     }
 
-    /// Pauses or resumes remapping. Keys held down when pausing are still released correctly.
-    pub fn set_enabled(&self, enabled: bool) {
-        ENABLED.store(enabled, Relaxed);
-    }
-
-    /// Swallows all keys until a key or chord is pressed and every key released again, then
-    /// reports it via [`Self::captured`].
-    pub fn start_capture(&self) {
+    fn start_capture(&self) {
         CAPTURED.store(0, Relaxed);
         CAPTURE_GENERATION.fetch_add(1, Relaxed);
         CAPTURING.store(true, Relaxed);
     }
 
-    pub fn cancel_capture(&self) {
+    fn cancel_capture(&self) {
         CAPTURING.store(false, Relaxed);
         CAPTURED.store(0, Relaxed);
     }
 
     /// The chord a finished capture caught, once.
-    pub fn captured(&self) -> Option<Chord> {
+    fn captured(&self) -> Option<Chord> {
         if CAPTURING.load(Relaxed) {
             return None;
         }
         let packed = CAPTURED.swap(0, Relaxed);
         let key = Key::from_index(packed as u8)?;
         Some(Chord { mods: Mods((packed >> 8) as u8), key })
+    }
+}
+
+impl Backend for Engine {
+    fn send(&mut self, command: Command) {
+        match command {
+            Command::SetRules(rules) => self.set_rules(rules),
+            // Keys held down when pausing are still released correctly: `decide` tracks them.
+            Command::SetEnabled(enabled) => ENABLED.store(enabled, Relaxed),
+            Command::StartCapture => self.start_capture(),
+            Command::CancelCapture => self.cancel_capture(),
+        }
+    }
+
+    fn poll(&mut self) -> Vec<Event> {
+        let captured = self.captured().map(Event::Captured);
+        captured.into_iter().chain(self.events.try_iter()).collect()
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        super::CAPABILITIES
     }
 }
 
@@ -143,11 +172,12 @@ impl Drop for Engine {
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
+        log::info!("keyboard hook removed");
     }
 }
 
-fn run(ready: mpsc::Sender<io::Result<u32>>, on_capture: Box<dyn Fn()>) {
-    ON_CAPTURE.set(Some(on_capture));
+fn run(ready: mpsc::Sender<io::Result<u32>>, events: mpsc::Sender<Event>, wake: Box<dyn Fn()>) {
+    WAKE.set(Some(wake));
     // SAFETY: plain Win32 calls; `msg` outlives every call that writes to it, and the rules box
     // was made by `set_rules`.
     unsafe {
@@ -173,14 +203,23 @@ fn run(ready: mpsc::Sender<io::Result<u32>>, on_capture: Box<dyn Fn()>) {
         // Make sure this thread has a message queue before anyone posts to it.
         PeekMessageW(&mut msg, null_mut(), 0, 0, PM_NOREMOVE);
         let _ = ready.send(Ok(GetCurrentThreadId()));
-        // Low-level hooks are delivered while the installing thread waits for messages.
-        while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
-            if msg.message == WM_SET_RULES {
-                RULES.set(*Box::from_raw(msg.lParam as *mut Vec<Rule>));
+        // Low-level hooks are delivered while the installing thread waits for messages. 0 is
+        // WM_QUIT, from `Drop`; -1 a failure of the message loop, which ends the hook too.
+        let failure = loop {
+            match GetMessageW(&mut msg, null_mut(), 0, 0) {
+                0 => break None,
+                -1 => break Some(io::Error::last_os_error()),
+                _ if msg.message == WM_SET_RULES => RULES.set(*Box::from_raw(msg.lParam as *mut Vec<Rule>)),
+                _ => {}
             }
-        }
+        };
         UnhookWinEvent(foreground);
         UnhookWindowsHookEx(hook);
+        if let Some(e) = failure {
+            log::error!("the keyboard hook stopped: {e}");
+            let _ = events.send(Event::Stopped(e.to_string()));
+            WAKE.with_borrow(|wake| wake.as_ref().map(|wake| wake()));
+        }
     }
     let stuck: Vec<Stroke> = STATE.with_borrow(|s| s.stuck().map(|key| Stroke::Key { key, up: true }).collect());
     send_all(&stuck);
@@ -231,7 +270,7 @@ fn handle(kb: &KBDLLHOOKSTRUCT, up: bool) -> Out {
         // A key Remapr doesn't know can't be mapped; while capturing, it still reaches no app.
         return if capturing && !injected { Out::swallow() } else { Out::default() };
     };
-    let ev = Event { key, up, injected };
+    let ev = KeyEvent { key, up, injected };
     STATE.with_borrow_mut(|s| {
         // A key remapped before the capture started still has to lift what it pressed.
         let capturable = (!ev.injected || CAPTURE_INJECTED.load(Relaxed)) && !(ev.up && s.is_replacing(ev.key));
@@ -261,7 +300,7 @@ impl Capture {
 
 /// Collects a key with the modifiers held before it (or a lone modifier) and finishes once every
 /// key is up again. All of it is swallowed, so nothing reaches any app.
-fn capture(ev: Event) {
+fn capture(ev: KeyEvent) {
     CAPTURE.with_borrow_mut(|c| {
         let generation = CAPTURE_GENERATION.load(Relaxed);
         if c.generation != generation {
@@ -287,7 +326,7 @@ fn capture(ev: Event) {
             if let Some(chord) = c.chord.or(c.first_modifier.map(Chord::key)) {
                 CAPTURED.store(u16::from(chord.mods.0) << 8 | u16::from(chord.key.index()), Relaxed);
                 CAPTURING.store(false, Relaxed);
-                ON_CAPTURE.with_borrow(|f| f.as_ref().map(|f| f()));
+                WAKE.with_borrow(|wake| wake.as_ref().map(|wake| wake()));
             }
             *c = Capture::new(generation);
         }

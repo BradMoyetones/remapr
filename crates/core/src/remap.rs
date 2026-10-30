@@ -18,7 +18,7 @@ const MODIFIER_KEYS: [Key; 8] = [
 
 /// One key going down or up, as the backend saw it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Event {
+pub struct KeyEvent {
     pub key: Key,
     pub up: bool,
     /// Synthetic input, ours or another program's: never remapped.
@@ -171,7 +171,7 @@ pub fn remaps_plainly(rules: &[Rule], app: App<'_>, key: Key) -> bool {
 /// Decides what to do with one key event. `rules` is in [`sort_rules`]' order.
 ///
 /// [`sort_rules`]: crate::sort_rules
-pub fn decide(ev: Event, enabled: bool, rules: &[Rule], app: App<'_>, s: &mut State) -> Out {
+pub fn decide(ev: KeyEvent, enabled: bool, rules: &[Rule], app: App<'_>, s: &mut State) -> Out {
     let out = Out::default();
     // Ours or another program's synthetic input: never remap it.
     if ev.injected {
@@ -247,8 +247,8 @@ mod tests {
     use Edge::{Lift, Press, Release};
     use Key::{AltLeft, CapsLock, ControlLeft, Escape, F1, F5, KeyA, KeyT, MetaLeft, ShiftLeft, ShiftRight};
 
-    fn ev(key: Key, up: bool) -> Event {
-        Event { key, up, injected: false }
+    fn ev(key: Key, up: bool) -> KeyEvent {
+        KeyEvent { key, up, injected: false }
     }
 
     fn rule(from: (Mods, Key), to: (Mods, Key), app: Option<&str>) -> Rule {
@@ -282,7 +282,7 @@ mod tests {
     fn unmapped_and_injected_keys_pass() {
         let (mut s, rules) = (State::new(), [rule((Mods::NONE, CapsLock), (Mods::NONE, Escape), None)]);
         assert_eq!(run(&mut s, &rules, KeyA, false), (false, vec![]));
-        let injected = Event { injected: true, ..ev(CapsLock, false) };
+        let injected = KeyEvent { injected: true, ..ev(CapsLock, false) };
         assert!(!decide(injected, true, &rules, App::Unknown, &mut s).swallow);
     }
 
