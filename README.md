@@ -7,12 +7,16 @@
 
 <h1 align="center">Remapr</h1>
 
-<p align="center">A fast, native key remapper for Windows, written entirely in Rust.</p>
+<p align="center">An open-source input remapper for Windows, macOS and Linux, written entirely in Rust.</p>
 
 Press a key, press the key it should become, done. No web views, no runtime, no background services
 beyond a single small process.
 
-## Features
+Remapr remaps keys and shortcuts on Windows today. One working release at a time, it is growing into
+a complete, high-end input remapper: keyboard, mouse, macros and game controllers, on Windows,
+macOS and Linux, native and open source.
+
+## What it does today (Windows)
 
 - Remap any key to any other key, system-wide.
 - Shortcuts too: a key to a shortcut (`F1` to `Ctrl + Shift + T`), a shortcut to a key, or one
@@ -32,8 +36,17 @@ beyond a single small process.
 - In English or Spanish, following Windows' display language.
 - Settings saved to `%APPDATA%\Remapr\config.toml`, written atomically.
 
-See [ROADMAP.md](ROADMAP.md) for the phases and [docs/VISION.md](docs/VISION.md) for where Remapr is
-going: macOS, Linux, mouse, macros and controllers.
+## Where it's going
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Keys and shortcuts, per app | Yes | Planned | Planned |
+| Mouse buttons and macros | Planned | Planned | Planned |
+| Game controllers to keyboard and mouse | Planned | Planned | Planned |
+| Virtual game controllers | Planned | Not possible: Apple doesn't allow it | Planned |
+
+[ROADMAP.md](ROADMAP.md) lists the phases, and [docs/VISION.md](docs/VISION.md) explains the
+architecture behind them.
 
 ## Installing
 
@@ -50,10 +63,11 @@ Uninstall it from Settings > Apps. Your mappings stay in `%APPDATA%\Remapr` in c
 
 ## Requirements
 
-- Windows 10 or 11 (x64).
-- Rust 1.95 or newer with the MSVC toolchain: install from [rustup.rs](https://rustup.rs).
-- Microsoft C++ Build Tools (the "Desktop development with C++" workload): the MSVC linker, and
-  `rc.exe` from the Windows SDK, which embeds the icons into the executable.
+- To use it: Windows 10 or 11 (x64), for now.
+- To build it: Rust 1.95 or newer, from [rustup.rs](https://rustup.rs). On Windows, with the MSVC
+  toolchain and the Microsoft C++ Build Tools (the "Desktop development with C++" workload): the
+  MSVC linker, and `rc.exe` from the Windows SDK, which embeds the icons into the executable. It
+  also builds on macOS and Linux (see below).
 
 ## Development
 
