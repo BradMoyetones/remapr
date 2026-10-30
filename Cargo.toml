@@ -12,6 +12,7 @@ authors = ["Brad Moyetones"]
 repository = "https://github.com/BradMoyetones/remapr"
 
 [workspace.dependencies]
+remapr-core = { path = "crates/core" }
 remapr-engine = { path = "crates/engine" }
 remapr-platform = { path = "crates/platform" }
 remapr-ui = { path = "crates/ui" }

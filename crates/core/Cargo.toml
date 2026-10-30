@@ -1,0 +1,19 @@
+[package]
+name = "remapr-core"
+description = "Remapr's model and remapping logic: keys, chords, rules and what to do with each key event. No OS code"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Keys and chords by name in settings files.
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
